@@ -1,0 +1,24 @@
+# =====================
+# Backend (Django)
+# =====================
+backend/entorno/
+backend/__pycache__/
+backend/*.sqlite3
+backend/db.sqlite3
+
+# =====================
+# Python
+# =====================
+*.pyc
+__pycache__/
+
+# =====================
+# Env
+# =====================
+.env
+
+# =====================
+# OS
+# =====================
+.DS_Store
+Thumbs.db
