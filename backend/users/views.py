@@ -1,8 +1,10 @@
+from django.contrib.auth import get_user_model
 from rest_framework import generics, permissions
 from rest_framework.response import Response
-from django.contrib.auth.models import User
 
 from .serializers import RegisterSerializer
+
+User = get_user_model()
 
 
 class RegisterView(generics.CreateAPIView):
@@ -16,4 +18,9 @@ class MeView(generics.GenericAPIView):
 
     def get(self, request):
         user = request.user
-        return Response({"id": user.id, "username": user.username, "email": user.email})
+        return Response({
+            "id": user.id,
+            "username": user.username,
+            "email": user.email,
+            "rol": getattr(user, "rol", None),
+        })
