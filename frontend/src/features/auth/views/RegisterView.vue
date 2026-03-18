@@ -1,72 +1,95 @@
 <template>
-  <section class="auth-page">
-    <AuthCard
-      title="Crear cuenta"
-      subtitle="Regístrate en SeekGym para guardar reseñas y seguir gimnasios."
-    >
-      <form class="auth-form" @submit.prevent="onSubmit">
-        <AuthInput
-          v-model="formData.username"
-          label="Usuario"
-          placeholder="Elige un usuario"
-        />
+  <div class="auth-container">
+    <form @submit.prevent="onSubmit" class="auth-box">
 
-        <AuthInput
-          v-model="formData.email"
-          label="Email"
-          type="email"
-          placeholder="Introduce tu email"
-        />
+      <h2 class="title">Crear cuenta</h2>
 
-        <AuthInput
-          v-model="formData.password"
-          label="Contraseña"
-          type="password"
-          placeholder="Mínimo 8 caracteres"
-        />
+      <DxForm :form-data="formData" :disabled="loading">
 
-        <p v-if="message" :class="messageClass">
-          {{ message }}
-        </p>
+        <DxItem
+          data-field="username"
+          editor-type="dxTextBox"
+          :editor-options="{
+            stylingMode: 'filled',
+            placeholder: 'Usuario'
+          }"
+        >
+          <DxRequiredRule message="El usuario es obligatorio" />
+          <DxLabel :visible="false" />
+        </DxItem>
 
-        <button class="auth-form__button" type="submit" :disabled="loading">
-          {{ loading ? 'Creando cuenta...' : 'Registrarse' }}
-        </button>
+        <DxItem
+          data-field="email"
+          editor-type="dxTextBox"
+          :editor-options="{
+            stylingMode: 'filled',
+            placeholder: 'Email'
+          }"
+        >
+          <DxLabel :visible="false" />
+        </DxItem>
 
-        <p class="auth-form__footer">
-          ¿Ya tienes cuenta?
-          <router-link to="/login">Inicia sesión</router-link>
-        </p>
-      </form>
-    </AuthCard>
-  </section>
+        <DxItem
+          data-field="password"
+          editor-type="dxTextBox"
+          :editor-options="{
+            stylingMode: 'filled',
+            placeholder: 'Contraseña',
+            mode: 'password'
+          }"
+        >
+          <DxRequiredRule message="La contraseña es obligatoria" />
+          <DxLabel :visible="false" />
+        </DxItem>
+
+        <DxButtonItem>
+          <DxButtonOptions
+            width="100%"
+            type="default"
+            :use-submit-behavior="true"
+          >
+          </DxButtonOptions>
+        </DxButtonItem>
+
+      </DxForm>
+
+      <p v-if="message" :class="isError ? 'error' : 'success'">
+        {{ message }}
+      </p>
+
+      <div class="link">
+        <router-link to="/login">Ya tengo cuenta</router-link>
+      </div>
+
+    </form>
+  </div>
 </template>
 
 <script setup>
-import { computed, ref } from 'vue'
+import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '../store/userStore'
-import AuthCard from '../components/AuthCard.vue'
-import AuthInput from '../components/AuthInput.vue'
+
+import DxForm, {
+  DxItem,
+  DxRequiredRule,
+  DxLabel,
+  DxButtonItem,
+  DxButtonOptions
+} from 'devextreme-vue/form'
 
 const router = useRouter()
 const userStore = useUserStore()
 
-const loading = ref(false)
-const message = ref('')
-const isError = ref(false)
-
 const formData = ref({
   username: '',
   email: '',
-  password: '',
+  password: ''
 })
 
-const messageClass = computed(() =>
-  isError.value
-    ? 'auth-form__message auth-form__message--error'
-    : 'auth-form__message auth-form__message--success'
-)
+const loading = ref(false)
+const message = ref('')
+const isError = ref(false)
 
 async function onSubmit() {
   loading.value = true
@@ -82,73 +105,49 @@ async function onSubmit() {
   loading.value = false
 
   if (result.isOk) {
-    message.value = 'Usuario registrado correctamente'
+    message.value = 'Usuario creado correctamente'
     setTimeout(() => router.push('/login'), 1000)
   } else {
     isError.value = true
-    message.value = 'No se pudo registrar el usuario'
+    message.value = 'Error al registrar'
   }
 }
 </script>
 
 <style scoped>
-.auth-page {
+.auth-container {
   min-height: 100vh;
-  display: grid;
-  place-items: center;
-  background: linear-gradient(180deg, #fff7ed 0%, #ffffff 40%);
-  padding: 24px;
-}
-
-.auth-form {
   display: flex;
-  flex-direction: column;
-  gap: 18px;
+  justify-content: center;
+  align-items: center;
+  background: #f9fafb;
 }
 
-.auth-form__button {
-  height: 46px;
-  border: none;
+.auth-box {
+  width: 360px;
+  padding: 32px;
+  background: white;
   border-radius: 12px;
-  background: #f97316;
-  color: white;
-  font-size: 15px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.2s ease;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.05);
 }
 
-.auth-form__button:hover {
-  background: #ea580c;
+.title {
+  text-align: center;
+  margin-bottom: 20px;
 }
 
-.auth-form__button:disabled {
-  opacity: 0.7;
-  cursor: not-allowed;
+.error {
+  color: red;
+  margin-top: 10px;
 }
 
-.auth-form__message {
-  margin: 0;
-  font-size: 14px;
+.success {
+  color: green;
+  margin-top: 10px;
 }
 
-.auth-form__message--error {
-  color: #dc2626;
-}
-
-.auth-form__message--success {
-  color: #16a34a;
-}
-
-.auth-form__footer {
-  margin: 0;
-  font-size: 14px;
-  color: #6b7280;
-}
-
-.auth-form__footer a {
-  color: #f97316;
-  font-weight: 600;
-  text-decoration: none;
+.link {
+  margin-top: 15px;
+  text-align: center;
 }
 </style>

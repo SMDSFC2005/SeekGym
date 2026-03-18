@@ -1,61 +1,84 @@
 <template>
-  <section class="auth-page">
-    <AuthCard
-      title="Iniciar sesión"
-      subtitle="Accede a SeekGym para comparar gimnasios y seguir tus favoritos."
-    >
-      <form class="auth-form" @submit.prevent="onSubmit">
-        <AuthInput
-          v-model="formData.username"
-          label="Usuario"
-          placeholder="Introduce tu usuario"
-        />
+  <div class="auth-container">
+    <form @submit.prevent="onSubmit" class="auth-box">
+      
+      <h2 class="title">Iniciar sesión</h2>
 
-        <AuthInput
-          v-model="formData.password"
-          label="Contraseña"
-          type="password"
-          placeholder="Introduce tu contraseña"
-        />
+      <DxForm :form-data="formData" :disabled="loading">
+        
+        <DxItem
+          data-field="username"
+          editor-type="dxTextBox"
+          :editor-options="{
+            stylingMode: 'filled',
+            placeholder: 'Usuario'
+          }"
+        >
+          <DxRequiredRule message="El usuario es obligatorio" />
+          <DxLabel :visible="false" />
+        </DxItem>
 
-        <p v-if="message" class="auth-form__message auth-form__message--error">
-          {{ message }}
-        </p>
+        <DxItem
+          data-field="password"
+          editor-type="dxTextBox"
+          :editor-options="{
+            stylingMode: 'filled',
+            placeholder: 'Contraseña',
+            mode: 'password'
+          }"
+        >
+          <DxRequiredRule message="La contraseña es obligatoria" />
+          <DxLabel :visible="false" />
+        </DxItem>
 
-        <button class="auth-form__button" type="submit" :disabled="loading">
-          {{ loading ? 'Cargando...' : 'Iniciar sesión' }}
-        </button>
+        <DxButtonItem>
+          <DxButtonOptions
+            width="100%"
+            type="default"
+            :use-submit-behavior="true"
+          >
+          </DxButtonOptions>
+        </DxButtonItem>
 
-        <p class="auth-form__footer">
-          ¿No tienes cuenta?
-          <router-link to="/register">Regístrate</router-link>
-        </p>
-      </form>
-    </AuthCard>
-  </section>
+      </DxForm>
+
+      <p v-if="error" class="error">{{ error }}</p>
+
+      <div class="link">
+        <router-link to="/register">Crear cuenta</router-link>
+      </div>
+
+    </form>
+  </div>
 </template>
 
 <script setup>
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '../store/userStore'
-import AuthCard from '../components/AuthCard.vue'
-import AuthInput from '../components/AuthInput.vue'
+
+import DxForm, {
+  DxItem,
+  DxRequiredRule,
+  DxLabel,
+  DxButtonItem,
+  DxButtonOptions
+} from 'devextreme-vue/form'
 
 const router = useRouter()
 const userStore = useUserStore()
 
-const loading = ref(false)
-const message = ref('')
-
 const formData = ref({
   username: '',
-  password: '',
+  password: ''
 })
+
+const loading = ref(false)
+const error = ref('')
 
 async function onSubmit() {
   loading.value = true
-  message.value = ''
+  error.value = ''
 
   const result = await userStore.login(
     formData.value.username,
@@ -67,65 +90,40 @@ async function onSubmit() {
   if (result.isOk) {
     router.push('/')
   } else {
-    message.value = result.message
+    error.value = result.message
   }
 }
 </script>
 
 <style scoped>
-.auth-page {
+.auth-container {
   min-height: 100vh;
-  display: grid;
-  place-items: center;
-  background: linear-gradient(180deg, #fff7ed 0%, #ffffff 40%);
-  padding: 24px;
-}
-
-.auth-form {
   display: flex;
-  flex-direction: column;
-  gap: 18px;
+  justify-content: center;
+  align-items: center;
+  background: #f9fafb;
 }
 
-.auth-form__button {
-  height: 46px;
-  border: none;
+.auth-box {
+  width: 360px;
+  padding: 32px;
+  background: white;
   border-radius: 12px;
-  background: #f97316;
-  color: white;
-  font-size: 15px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.2s ease;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.05);
 }
 
-.auth-form__button:hover {
-  background: #ea580c;
+.title {
+  text-align: center;
+  margin-bottom: 20px;
 }
 
-.auth-form__button:disabled {
-  opacity: 0.7;
-  cursor: not-allowed;
+.error {
+  color: red;
+  margin-top: 10px;
 }
 
-.auth-form__message {
-  margin: 0;
-  font-size: 14px;
-}
-
-.auth-form__message--error {
-  color: #dc2626;
-}
-
-.auth-form__footer {
-  margin: 0;
-  font-size: 14px;
-  color: #6b7280;
-}
-
-.auth-form__footer a {
-  color: #f97316;
-  font-weight: 600;
-  text-decoration: none;
+.link {
+  margin-top: 15px;
+  text-align: center;
 }
 </style>
