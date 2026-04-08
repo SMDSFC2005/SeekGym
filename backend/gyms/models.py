@@ -2,9 +2,52 @@ from django.db import models
 from django.core.validators import MinValueValidator, MaxValueValidator
 
 
+class Province(models.Model):
+    name = models.CharField(max_length=100, unique=True)
+    slug = models.SlugField(unique=True)
+
+    class Meta:
+        ordering = ["name"]
+
+    def __str__(self):
+        return self.name
+
+
+class Municipality(models.Model):
+    province = models.ForeignKey(
+        Province,
+        on_delete=models.CASCADE,
+        related_name="municipalities"
+    )
+    name = models.CharField(max_length=100)
+    slug = models.SlugField()
+
+    class Meta:
+        unique_together = ("province", "slug")
+        ordering = ["name"]
+
+    def __str__(self):
+        return f"{self.name} ({self.province.name})"
+
+
 class Gym(models.Model):
     name = models.CharField(max_length=255)
     slug = models.SlugField(unique=True)
+
+    province = models.ForeignKey(
+        Province,
+        on_delete=models.PROTECT,
+        related_name="gyms",
+        null=True,
+        blank=True,
+    )
+    municipality = models.ForeignKey(
+        Municipality,
+        on_delete=models.PROTECT,
+        related_name="gyms",
+        null=True,
+        blank=True,
+    )
 
     city = models.CharField(max_length=100)
     postal_code = models.CharField(max_length=10)

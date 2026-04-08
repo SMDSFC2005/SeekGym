@@ -5,7 +5,12 @@ class GymHomeSerializer(serializers.Serializer):
     id = serializers.IntegerField()
     name = serializers.CharField()
     slug = serializers.CharField()
-    city = serializers.CharField()
+
+    province_id = serializers.IntegerField(allow_null=True)
+    province = serializers.CharField(allow_null=True)
+    municipality_id = serializers.IntegerField(allow_null=True)
+    municipality = serializers.CharField(allow_null=True)
+
     postal_code = serializers.CharField()
     address = serializers.CharField()
     description = serializers.CharField(allow_blank=True)
@@ -40,7 +45,12 @@ class GymDetailSerializer(serializers.Serializer):
     id = serializers.IntegerField()
     name = serializers.CharField()
     slug = serializers.CharField()
-    city = serializers.CharField()
+
+    province_id = serializers.IntegerField(allow_null=True)
+    province = serializers.CharField(allow_null=True)
+    municipality_id = serializers.IntegerField(allow_null=True)
+    municipality = serializers.CharField(allow_null=True)
+
     postal_code = serializers.CharField()
     address = serializers.CharField()
     description = serializers.CharField(allow_blank=True)
@@ -55,3 +65,18 @@ class GymDetailSerializer(serializers.Serializer):
 
     best_time_today = BestTimeSerializer(allow_null=True)
     today_timeline = GymTimelineHourSerializer(many=True)
+
+
+class ProvinceSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    name = serializers.CharField()
+
+
+class MunicipalitySerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    name = serializers.CharField()
+    province_id = serializers.IntegerField()
+
+
+class PostalCodeOptionSerializer(serializers.Serializer):
+    postal_code = serializers.CharField()

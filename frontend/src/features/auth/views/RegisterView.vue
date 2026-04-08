@@ -1,11 +1,9 @@
 <template>
   <div class="auth-container">
     <form @submit.prevent="onSubmit" class="auth-box">
-
       <h2 class="title">Crear cuenta</h2>
 
       <DxForm :form-data="formData" :disabled="loading">
-
         <DxItem
           data-field="username"
           editor-type="dxTextBox"
@@ -47,10 +45,9 @@
             width="100%"
             type="default"
             :use-submit-behavior="true"
-          >
-          </DxButtonOptions>
+            text="Registrarse"
+          />
         </DxButtonItem>
-
       </DxForm>
 
       <p v-if="message" :class="isError ? 'error' : 'success'">
@@ -60,7 +57,6 @@
       <div class="link">
         <router-link to="/login">Ya tengo cuenta</router-link>
       </div>
-
     </form>
   </div>
 </template>
@@ -75,7 +71,7 @@ import DxForm, {
   DxRequiredRule,
   DxLabel,
   DxButtonItem,
-  DxButtonOptions
+  DxButtonOptions,
 } from 'devextreme-vue/form'
 
 const router = useRouter()
@@ -84,7 +80,7 @@ const userStore = useUserStore()
 const formData = ref({
   username: '',
   email: '',
-  password: ''
+  password: '',
 })
 
 const loading = ref(false)
@@ -128,7 +124,7 @@ async function onSubmit() {
   padding: 32px;
   background: white;
   border-radius: 12px;
-  box-shadow: 0 10px 30px rgba(0,0,0,0.05);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05);
 }
 
 .title {

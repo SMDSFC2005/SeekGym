@@ -119,7 +119,12 @@ def build_home_gym_payload(gym, now=None):
         "id": gym.id,
         "name": gym.name,
         "slug": gym.slug,
-        "city": gym.city,
+
+        "province_id": gym.province_id,
+        "province": gym.province.name if gym.province else None,
+        "municipality_id": gym.municipality_id,
+        "municipality": gym.municipality.name if gym.municipality else None,
+
         "postal_code": gym.postal_code,
         "address": gym.address,
         "description": gym.description,
@@ -127,6 +132,7 @@ def build_home_gym_payload(gym, now=None):
         "rating": str(gym.rating),
         "reviews_count": gym.reviews_count,
         "image_url": gym.image_url,
+
         "current_occupancy": current_data["current_occupancy"],
         "current_status": current_data["current_status"],
         "confidence": current_data["confidence"],
@@ -143,7 +149,12 @@ def build_gym_detail_payload(gym, now=None):
         "id": gym.id,
         "name": gym.name,
         "slug": gym.slug,
-        "city": gym.city,
+
+        "province_id": gym.province_id,
+        "province": gym.province.name if gym.province else None,
+        "municipality_id": gym.municipality_id,
+        "municipality": gym.municipality.name if gym.municipality else None,
+
         "postal_code": gym.postal_code,
         "address": gym.address,
         "description": gym.description,
@@ -151,6 +162,7 @@ def build_gym_detail_payload(gym, now=None):
         "rating": str(gym.rating),
         "reviews_count": gym.reviews_count,
         "image_url": gym.image_url,
+
         "current_occupancy": current_data["current_occupancy"],
         "current_status": current_data["current_status"],
         "confidence": current_data["confidence"],

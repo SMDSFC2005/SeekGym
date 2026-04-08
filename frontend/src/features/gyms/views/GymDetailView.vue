@@ -8,7 +8,7 @@
         <h1 class="title">{{ gymDetail.name }}</h1>
 
         <p class="subtitle">
-          {{ gymDetail.city }} · {{ gymDetail.postal_code }} · {{ gymDetail.address }}
+          {{ gymDetail.municipality }} · {{ gymDetail.province }} · {{ gymDetail.postal_code }} · {{ gymDetail.address }}
         </p>
 
         <div class="meta">

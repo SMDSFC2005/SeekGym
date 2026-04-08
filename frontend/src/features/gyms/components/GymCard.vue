@@ -14,7 +14,7 @@ defineProps({
     <div class="gym-card__header">
       <div>
         <h3>{{ gym.name }}</h3>
-        <p>{{ gym.city }} · {{ gym.postal_code }}</p>
+        <p>{{ gym.municipality }} · {{ gym.postal_code }}</p>
       </div>
 
       <GymStatusBadge :status="gym.current_status" />
