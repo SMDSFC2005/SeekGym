@@ -19,6 +19,11 @@ const routes = [
     name: 'register',
     component: RegisterView,
   },
+  {
+    path: '/gyms/:slug',
+    name: 'gym-detail',
+    component: () => import('@/features/gyms/views/GymDetailView.vue'),
+  },
 ]
 
 const router = createRouter({

@@ -40,6 +40,10 @@ defineProps({
         <p>{{ gym.best_time_today ? gym.best_time_today.label : '—' }}</p>
       </div>
     </div>
+
+    <router-link :to="`/gyms/${gym.slug}`" class="gym-card__link">
+      Ver detalles
+    </router-link>
   </article>
 </template>
 
@@ -97,5 +101,17 @@ defineProps({
   margin: 0.35rem 0 0;
   font-size: 1.15rem;
   font-weight: 700;
+}
+
+.gym-card__link {
+  display: inline-block;
+  margin-top: 1rem;
+  color: #111827;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.gym-card__link:hover {
+  text-decoration: underline;
 }
 </style>

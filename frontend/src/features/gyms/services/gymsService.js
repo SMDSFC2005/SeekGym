@@ -17,3 +17,11 @@ export async function getHomeGymsService(filters = {}) {
     return error.response
   }
 }
+
+export async function getGymDetailService(slug) {
+  try {
+    return await apiCore.get(`/gyms/${slug}/`)
+  } catch (error) {
+    return error.response
+  }
+}

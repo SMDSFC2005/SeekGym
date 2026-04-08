@@ -1,10 +1,15 @@
+from django.shortcuts import get_object_or_404
+
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 
 from gyms.models import Gym
-from gyms.serializers import GymHomeSerializer
-from gyms.services.occupancy import build_home_gym_payload
+from gyms.serializers import GymHomeSerializer, GymDetailSerializer
+from gyms.services.occupancy import (
+    build_home_gym_payload,
+    build_gym_detail_payload,
+)
 
 
 class GymHomeView(APIView):
@@ -35,3 +40,13 @@ class GymHomeView(APIView):
             },
             status=status.HTTP_200_OK,
         )
+
+
+class GymDetailView(APIView):
+    def get(self, request, slug, *args, **kwargs):
+        gym = get_object_or_404(Gym, slug=slug, is_active=True)
+
+        payload = build_gym_detail_payload(gym)
+        serializer = GymDetailSerializer(payload)
+
+        return Response(serializer.data, status=status.HTTP_200_OK)
