@@ -1,12 +1,19 @@
 import apiCore from '@/services/apiCore'
-import apiPrivate from '@/services/apiPrivate'
 
 export async function getHomeGymsService(filters = {}) {
   const params = {}
 
-  if (filters.province_id) params.province_id = filters.province_id
-  if (filters.municipality_id) params.municipality_id = filters.municipality_id
-  if (filters.postal_code) params.postal_code = filters.postal_code
+  if (filters.province_id) {
+    params.province_id = filters.province_id
+  }
+
+  if (filters.municipality_id) {
+    params.municipality_id = filters.municipality_id
+  }
+
+  if (filters.postal_code) {
+    params.postal_code = filters.postal_code
+  }
 
   try {
     return await apiCore.get('/gyms/home/', { params })
@@ -25,7 +32,7 @@ export async function getGymDetailService(slug) {
 
 export async function getMyGymService() {
   try {
-    return await apiPrivate.get('/gyms/my-gym/')
+    return await apiCore.get('/gyms/my-gym/')
   } catch (error) {
     return error.response
   }
@@ -33,7 +40,7 @@ export async function getMyGymService() {
 
 export async function createGymService(payload) {
   try {
-    return await apiPrivate.post('/gyms/create/', payload)
+    return await apiCore.post('/gyms/create/', payload)
   } catch (error) {
     return error.response
   }
@@ -41,7 +48,7 @@ export async function createGymService(payload) {
 
 export async function updateGymService(slug, payload) {
   try {
-    return await apiPrivate.patch(`/gyms/${slug}/manage/`, payload)
+    return await apiCore.patch(`/gyms/${slug}/manage/`, payload)
   } catch (error) {
     return error.response
   }
@@ -49,7 +56,7 @@ export async function updateGymService(slug, payload) {
 
 export async function createGymAnnouncementService(slug, payload) {
   try {
-    return await apiPrivate.post(`/gyms/${slug}/announcements/`, payload)
+    return await apiCore.post(`/gyms/${slug}/announcements/`, payload)
   } catch (error) {
     return error.response
   }
@@ -76,8 +83,13 @@ export async function getMunicipalitiesService(provinceId) {
 export async function getPostalCodesService(filters = {}) {
   const params = {}
 
-  if (filters.province_id) params.province_id = filters.province_id
-  if (filters.municipality_id) params.municipality_id = filters.municipality_id
+  if (filters.province_id) {
+    params.province_id = filters.province_id
+  }
+
+  if (filters.municipality_id) {
+    params.municipality_id = filters.municipality_id
+  }
 
   try {
     return await apiCore.get('/gyms/filters/postal-codes/', { params })

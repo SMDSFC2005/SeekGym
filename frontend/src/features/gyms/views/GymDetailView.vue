@@ -188,8 +188,8 @@
 import { computed, onMounted, reactive, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { storeToRefs } from 'pinia'
-import { useGymsStore } from '@/stores/gymStore'
-import { useUserStore } from '@/stores/userStore'
+import { useGymsStore } from '../store/gymStore'
+import { useUserStore } from '../../auth/store/userStore'
 
 const route = useRoute()
 const gymsStore = useGymsStore()
