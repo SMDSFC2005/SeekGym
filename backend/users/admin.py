@@ -6,11 +6,30 @@ from .models import Usuario
 
 @admin.register(Usuario)
 class UsuarioAdmin(UserAdmin):
+    model = Usuario
+
+    list_display = (
+        "id",
+        "username",
+        "email",
+        "rol",
+        "estado_gym",
+        "is_staff",
+        "is_superuser",
+    )
+
+    list_filter = (
+        "rol",
+        "estado_gym",
+        "is_staff",
+        "is_superuser",
+        "is_active",
+    )
+
     fieldsets = UserAdmin.fieldsets + (
-        ("Información extra", {"fields": ("rol", "creado_en")}),
+        ("Rol y estado gym", {
+            "fields": ("rol", "estado_gym", "creado_en"),
+        }),
     )
-    add_fieldsets = UserAdmin.add_fieldsets + (
-        ("Información extra", {"fields": ("rol",)}),
-    )
+
     readonly_fields = ("creado_en",)
-    list_display = ("username", "email", "rol", "is_staff", "is_active")

@@ -40,6 +40,21 @@
           <DxLabel :visible="false" />
         </DxItem>
 
+        <DxItem
+          data-field="rol"
+          editor-type="dxSelectBox"
+          :editor-options="{
+            items: roles,
+            valueExpr: 'value',
+            displayExpr: 'label',
+            stylingMode: 'filled',
+            placeholder: 'Tipo de cuenta'
+          }"
+        >
+          <DxRequiredRule message="Selecciona un tipo de cuenta" />
+          <DxLabel :visible="false" />
+        </DxItem>
+
         <DxButtonItem>
           <DxButtonOptions
             width="100%"
@@ -77,10 +92,16 @@ import DxForm, {
 const router = useRouter()
 const userStore = useUserStore()
 
+const roles = [
+  { value: 'NORMAL', label: 'Usuario normal' },
+  { value: 'GIMNASIO', label: 'Solicitar cuenta de gimnasio' },
+]
+
 const formData = ref({
   username: '',
   email: '',
   password: '',
+  rol: 'NORMAL',
 })
 
 const loading = ref(false)
@@ -95,14 +116,20 @@ async function onSubmit() {
   const result = await userStore.register(
     formData.value.username,
     formData.value.password,
-    formData.value.email
+    formData.value.email,
+    formData.value.rol
   )
 
   loading.value = false
 
   if (result.isOk) {
-    message.value = 'Usuario creado correctamente'
-    setTimeout(() => router.push('/login'), 1000)
+    if (formData.value.rol === 'GIMNASIO') {
+      message.value = 'Solicitud de cuenta gimnasio enviada. Un administrador debe aprobarla.'
+    } else {
+      message.value = 'Usuario creado correctamente'
+    }
+
+    setTimeout(() => router.push('/login'), 1500)
   } else {
     isError.value = true
     message.value = 'Error al registrar'
@@ -124,7 +151,7 @@ async function onSubmit() {
   padding: 32px;
   background: white;
   border-radius: 12px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.05);
 }
 
 .title {

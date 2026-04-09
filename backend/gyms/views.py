@@ -1,24 +1,25 @@
 from django.shortcuts import get_object_or_404
 
-from rest_framework.views import APIView
+from rest_framework import permissions, status
 from rest_framework.response import Response
-from rest_framework import status
+from rest_framework.views import APIView
 
-from gyms.models import Gym, Province, Municipality
+from gyms.models import Gym, Municipality, Province
+from gyms.permissions import CanManageGym, IsGymApprovedOrSuperuser
 from gyms.serializers import (
-    GymHomeSerializer,
+    GymAnnouncementCreateSerializer,
+    GymCreateUpdateSerializer,
     GymDetailSerializer,
-    ProvinceSerializer,
+    GymHomeSerializer,
     MunicipalitySerializer,
     PostalCodeOptionSerializer,
-)
-from gyms.services.occupancy import (
-    build_home_gym_payload,
-    build_gym_detail_payload,
+    ProvinceSerializer,
 )
 
 
 class GymHomeView(APIView):
+    permission_classes = [permissions.AllowAny]
+
     def get(self, request, *args, **kwargs):
         province_id = request.query_params.get("province_id")
         municipality_id = request.query_params.get("municipality_id")
@@ -27,7 +28,7 @@ class GymHomeView(APIView):
         gyms = Gym.objects.filter(is_active=True).select_related(
             "province",
             "municipality",
-        ).order_by("name")
+        ).prefetch_related("announcements").order_by("name")
 
         if province_id:
             gyms = gyms.filter(province_id=province_id)
@@ -38,9 +39,7 @@ class GymHomeView(APIView):
         if postal_code:
             gyms = gyms.filter(postal_code=postal_code.strip())
 
-        results = [build_home_gym_payload(gym) for gym in gyms]
-
-        serializer = GymHomeSerializer(results, many=True)
+        serializer = GymHomeSerializer(gyms, many=True)
 
         return Response(
             {
@@ -57,14 +56,17 @@ class GymHomeView(APIView):
 
 
 class ProvinceListView(APIView):
+    permission_classes = [permissions.AllowAny]
+
     def get(self, request, *args, **kwargs):
         provinces = Province.objects.order_by("name")
-        data = [{"id": province.id, "name": province.name} for province in provinces]
-        serializer = ProvinceSerializer(data, many=True)
+        serializer = ProvinceSerializer(provinces, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 
 class MunicipalityListView(APIView):
+    permission_classes = [permissions.AllowAny]
+
     def get(self, request, *args, **kwargs):
         province_id = request.query_params.get("province_id")
 
@@ -73,20 +75,13 @@ class MunicipalityListView(APIView):
         if province_id:
             municipalities = municipalities.filter(province_id=province_id)
 
-        data = [
-            {
-                "id": municipality.id,
-                "name": municipality.name,
-                "province_id": municipality.province_id,
-            }
-            for municipality in municipalities
-        ]
-
-        serializer = MunicipalitySerializer(data, many=True)
+        serializer = MunicipalitySerializer(municipalities, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 
 class PostalCodeListView(APIView):
+    permission_classes = [permissions.AllowAny]
+
     def get(self, request, *args, **kwargs):
         province_id = request.query_params.get("province_id")
         municipality_id = request.query_params.get("municipality_id")
@@ -111,14 +106,105 @@ class PostalCodeListView(APIView):
 
 
 class GymDetailView(APIView):
+    permission_classes = [permissions.AllowAny]
+
     def get(self, request, slug, *args, **kwargs):
         gym = get_object_or_404(
-            Gym.objects.select_related("province", "municipality"),
+            Gym.objects.select_related("province", "municipality", "owner").prefetch_related("announcements"),
             slug=slug,
             is_active=True,
         )
-
-        payload = build_gym_detail_payload(gym)
-        serializer = GymDetailSerializer(payload)
-
+        serializer = GymDetailSerializer(gym)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+class MyGymView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, *args, **kwargs):
+        gym = Gym.objects.select_related("province", "municipality").filter(owner=request.user).first()
+
+        if not gym:
+            return Response(
+                {
+                    "exists": False,
+                    "gym": None,
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        serializer = GymDetailSerializer(gym)
+        return Response(
+            {
+                "exists": True,
+                "gym": serializer.data,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class GymCreateView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsGymApprovedOrSuperuser]
+
+    def post(self, request, *args, **kwargs):
+        if not request.user.is_superuser and Gym.objects.filter(owner=request.user).exists():
+            return Response(
+                {"detail": "Ya tienes un gimnasio creado."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        serializer = GymCreateUpdateSerializer(data=request.data, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+        gym = serializer.save()
+
+        response_serializer = GymDetailSerializer(gym)
+        return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+
+
+class GymUpdateView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsGymApprovedOrSuperuser, CanManageGym]
+
+    def patch(self, request, slug, *args, **kwargs):
+        gym = get_object_or_404(
+            Gym.objects.select_related("province", "municipality", "owner"),
+            slug=slug,
+        )
+        self.check_object_permissions(request, gym)
+
+        serializer = GymCreateUpdateSerializer(
+            gym,
+            data=request.data,
+            partial=True,
+            context={"request": request},
+        )
+        serializer.is_valid(raise_exception=True)
+        gym = serializer.save()
+
+        response_serializer = GymDetailSerializer(gym)
+        return Response(response_serializer.data, status=status.HTTP_200_OK)
+
+
+class GymAnnouncementCreateView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsGymApprovedOrSuperuser, CanManageGym]
+
+    def post(self, request, slug, *args, **kwargs):
+        gym = get_object_or_404(Gym, slug=slug)
+        self.check_object_permissions(request, gym)
+
+        serializer = GymAnnouncementCreateSerializer(
+            data=request.data,
+            context={"gym": gym},
+        )
+        serializer.is_valid(raise_exception=True)
+        announcement = serializer.save()
+
+        return Response(
+            {
+                "id": announcement.id,
+                "kind": announcement.kind,
+                "title": announcement.title,
+                "content": announcement.content,
+                "created_at": announcement.created_at,
+            },
+            status=status.HTTP_201_CREATED,
+        )

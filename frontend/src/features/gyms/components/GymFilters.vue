@@ -175,6 +175,6 @@ function submit() {
 @media (max-width: 768px) {
   .filters {
     grid-template-columns: 1fr;
-  }
+  } 
 }
 </style>

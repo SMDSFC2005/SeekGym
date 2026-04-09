@@ -2,9 +2,27 @@
   <div class="home-container">
     <div class="home-box">
       <div class="top-bar">
-        <button class="logout-button" @click="onLogout">
-          Cerrar sesión
-        </button>
+        <div class="top-bar__actions">
+          <button
+            v-if="canCreateGym && !myGym"
+            class="action-button"
+            @click="goToCreateGym"
+          >
+            Crear mi gimnasio
+          </button>
+
+          <button
+            v-if="canCreateGym && myGym"
+            class="action-button"
+            @click="goToMyGym"
+          >
+            Gestionar mi gimnasio
+          </button>
+
+          <button class="logout-button" @click="onLogout">
+            Cerrar sesión
+          </button>
+        </div>
       </div>
 
       <h2 class="title">¿Cuándo entrenar sin esperar máquinas?</h2>
@@ -42,17 +60,16 @@
 </template>
 
 <script setup>
-import { reactive, onMounted } from 'vue'
+import { computed, reactive, onMounted } from 'vue'
 import { storeToRefs } from 'pinia'
+import { useRouter } from 'vue-router'
 import { useGymsStore } from '../store/gymStore'
+import { useUserStore } from '../../auth/store/userStore'
 import GymFilters from '../components/GymFilters.vue'
 import GymCard from '../components/GymCard.vue'
-import { useRouter } from 'vue-router'
-import { useUserStore } from '@/features/auth/store/userStore'
 
 const router = useRouter()
 const userStore = useUserStore()
-
 const gymsStore = useGymsStore()
 
 const {
@@ -63,6 +80,7 @@ const {
   provinces,
   municipalities,
   postalCodes,
+  myGym,
 } = storeToRefs(gymsStore)
 
 const filters = reactive({
@@ -71,9 +89,27 @@ const filters = reactive({
   postal_code: '',
 })
 
+const canCreateGym = computed(() => {
+  return (
+    userStore.user &&
+    userStore.user.rol === 'GIMNASIO' &&
+    userStore.user.estado_gym === 'APROBADO'
+  )
+})
+
 function onLogout() {
   userStore.logout()
   router.push('/login')
+}
+
+function goToCreateGym() {
+  router.push('/gyms/create')
+}
+
+function goToMyGym() {
+  if (myGym.value?.slug) {
+    router.push(`/gyms/${myGym.value.slug}`)
+  }
 }
 
 async function onProvinceChange(payload) {
@@ -96,7 +132,7 @@ async function onMunicipalityChange(payload) {
 
   gymsStore.resetPostalCodes()
 
-  if (filters.province_id && filters.municipality_id) {
+  if (filters.province_id) {
     await gymsStore.fetchPostalCodes({
       province_id: filters.province_id,
       municipality_id: filters.municipality_id,
@@ -127,11 +163,15 @@ onMounted(async () => {
     await gymsStore.fetchMunicipalities(filters.province_id)
   }
 
-  if (filters.province_id && filters.municipality_id) {
+  if (filters.province_id) {
     await gymsStore.fetchPostalCodes({
       province_id: filters.province_id,
       municipality_id: filters.municipality_id,
     })
+  }
+
+  if (canCreateGym.value) {
+    await gymsStore.fetchMyGym()
   }
 
   await gymsStore.fetchHomeGyms({
@@ -192,17 +232,27 @@ onMounted(async () => {
   margin-bottom: 16px;
 }
 
-.logout-button {
+.top-bar__actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.logout-button,
+.action-button {
   padding: 8px 14px;
   border: none;
   border-radius: 8px;
-  background: #111827;
   color: white;
   cursor: pointer;
   font-size: 0.9rem;
 }
 
-.logout-button:hover {
-  opacity: 0.9;
+.logout-button {
+  background: #111827;
+}
+
+.action-button {
+  background: #f97316;
 }
 </style>

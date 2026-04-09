@@ -1,4 +1,5 @@
 from django.utils import timezone
+
 from gyms.models import GymOccupancyProfile
 
 
@@ -19,10 +20,13 @@ def get_day_and_hour(now=None):
 def get_status_from_occupancy(occupancy_percent):
     if occupancy_percent is None:
         return None
+
     if occupancy_percent < 40:
         return GOOD
+
     if occupancy_percent < 70:
         return MEDIUM
+
     return AVOID
 
 
@@ -103,69 +107,7 @@ def get_today_timeline(gym, now=None):
     profiles_by_hour = {profile.hour: profile for profile in profiles}
 
     timeline = []
-
     for hour in range(24):
-        profile = profiles_by_hour.get(hour)
-        timeline.append(build_timeline_hour(hour, profile))
+        timeline.append(build_timeline_hour(hour, profiles_by_hour.get(hour)))
 
     return timeline
-
-
-def build_home_gym_payload(gym, now=None):
-    current_data = get_current_occupancy_data(gym, now)
-    best_time_today = get_best_time_today(gym, now)
-
-    return {
-        "id": gym.id,
-        "name": gym.name,
-        "slug": gym.slug,
-
-        "province_id": gym.province_id,
-        "province": gym.province.name if gym.province else None,
-        "municipality_id": gym.municipality_id,
-        "municipality": gym.municipality.name if gym.municipality else None,
-
-        "postal_code": gym.postal_code,
-        "address": gym.address,
-        "description": gym.description,
-        "price_per_month": str(gym.price_per_month),
-        "rating": str(gym.rating),
-        "reviews_count": gym.reviews_count,
-        "image_url": gym.image_url,
-
-        "current_occupancy": current_data["current_occupancy"],
-        "current_status": current_data["current_status"],
-        "confidence": current_data["confidence"],
-        "best_time_today": best_time_today,
-    }
-
-
-def build_gym_detail_payload(gym, now=None):
-    current_data = get_current_occupancy_data(gym, now)
-    best_time_today = get_best_time_today(gym, now)
-    today_timeline = get_today_timeline(gym, now)
-
-    return {
-        "id": gym.id,
-        "name": gym.name,
-        "slug": gym.slug,
-
-        "province_id": gym.province_id,
-        "province": gym.province.name if gym.province else None,
-        "municipality_id": gym.municipality_id,
-        "municipality": gym.municipality.name if gym.municipality else None,
-
-        "postal_code": gym.postal_code,
-        "address": gym.address,
-        "description": gym.description,
-        "price_per_month": str(gym.price_per_month),
-        "rating": str(gym.rating),
-        "reviews_count": gym.reviews_count,
-        "image_url": gym.image_url,
-
-        "current_occupancy": current_data["current_occupancy"],
-        "current_status": current_data["current_status"],
-        "confidence": current_data["confidence"],
-        "best_time_today": best_time_today,
-        "today_timeline": today_timeline,
-    }

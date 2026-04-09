@@ -2,6 +2,10 @@ import { defineStore } from 'pinia'
 import {
   getHomeGymsService,
   getGymDetailService,
+  getMyGymService,
+  createGymService,
+  updateGymService,
+  createGymAnnouncementService,
   getProvincesService,
   getMunicipalitiesService,
   getPostalCodesService,
@@ -11,12 +15,19 @@ export const useGymsStore = defineStore('gyms', {
   state: () => ({
     gyms: [],
     gymDetail: null,
+    myGym: null,
 
     loading: false,
     detailLoading: false,
+    myGymLoading: false,
+    saveLoading: false,
+    announcementLoading: false,
 
     error: '',
     detailError: '',
+    myGymError: '',
+    saveError: '',
+    announcementError: '',
 
     provinces: [],
     municipalities: [],
@@ -41,28 +52,18 @@ export const useGymsStore = defineStore('gyms', {
       }
 
       const response = await getHomeGymsService(finalFilters)
-
       this.loading = false
 
       if (response?.status === 200) {
         this.gyms = response.data.results || []
         this.currentFilters = finalFilters
 
-        return {
-          isOk: true,
-          message: 'Gimnasios cargados correctamente',
-          data: response.data,
-        }
+        return { isOk: true, data: response.data }
       }
 
       this.gyms = []
       this.error = 'No se pudieron cargar los gimnasios.'
-
-      return {
-        isOk: false,
-        message: 'No se pudieron cargar los gimnasios.',
-        data: response?.data || null,
-      }
+      return { isOk: false, data: response?.data || null }
     },
 
     async fetchGymDetail(slug) {
@@ -71,26 +72,89 @@ export const useGymsStore = defineStore('gyms', {
       this.gymDetail = null
 
       const response = await getGymDetailService(slug)
-
       this.detailLoading = false
 
       if (response?.status === 200) {
         this.gymDetail = response.data
-
-        return {
-          isOk: true,
-          message: 'Gimnasio cargado correctamente',
-          data: response.data,
-        }
+        return { isOk: true, data: response.data }
       }
 
       this.detailError = 'No se pudo cargar el detalle del gimnasio.'
+      return { isOk: false, data: response?.data || null }
+    },
 
-      return {
-        isOk: false,
-        message: 'No se pudo cargar el detalle del gimnasio.',
-        data: response?.data || null,
+    async fetchMyGym() {
+      this.myGymLoading = true
+      this.myGymError = ''
+
+      const response = await getMyGymService()
+      this.myGymLoading = false
+
+      if (response?.status === 200) {
+        this.myGym = response.data.gym
+        return { isOk: true, data: response.data }
       }
+
+      this.myGym = null
+      this.myGymError = 'No se pudo cargar tu gimnasio.'
+      return { isOk: false, data: response?.data || null }
+    },
+
+    async createGym(payload) {
+      this.saveLoading = true
+      this.saveError = ''
+
+      const response = await createGymService(payload)
+      this.saveLoading = false
+
+      if (response?.status === 201) {
+        this.myGym = response.data
+        return { isOk: true, data: response.data }
+      }
+
+      this.saveError = response?.data?.detail || 'No se pudo crear el gimnasio.'
+      return { isOk: false, data: response?.data || null }
+    },
+
+    async updateGym(slug, payload) {
+      this.saveLoading = true
+      this.saveError = ''
+
+      const response = await updateGymService(slug, payload)
+      this.saveLoading = false
+
+      if (response?.status === 200) {
+        this.gymDetail = response.data
+
+        if (this.myGym && this.myGym.slug === slug) {
+          this.myGym = response.data
+        }
+
+        return { isOk: true, data: response.data }
+      }
+
+      this.saveError = response?.data?.detail || 'No se pudo actualizar el gimnasio.'
+      return { isOk: false, data: response?.data || null }
+    },
+
+    async createAnnouncement(slug, payload) {
+      this.announcementLoading = true
+      this.announcementError = ''
+
+      const response = await createGymAnnouncementService(slug, payload)
+      this.announcementLoading = false
+
+      if (response?.status === 201) {
+        await this.fetchGymDetail(slug)
+        if (this.myGym && this.myGym.slug === slug) {
+          await this.fetchMyGym()
+        }
+
+        return { isOk: true, data: response.data }
+      }
+
+      this.announcementError = response?.data?.detail || 'No se pudo crear la publicación.'
+      return { isOk: false, data: response?.data || null }
     },
 
     async fetchProvinces() {
@@ -98,69 +162,45 @@ export const useGymsStore = defineStore('gyms', {
 
       if (response?.status === 200) {
         this.provinces = response.data || []
-        return {
-          isOk: true,
-          data: response.data,
-        }
+        return { isOk: true, data: response.data }
       }
 
       this.provinces = []
-      return {
-        isOk: false,
-        data: response?.data || null,
-      }
+      return { isOk: false, data: response?.data || null }
     },
 
     async fetchMunicipalities(provinceId) {
       if (!provinceId) {
         this.municipalities = []
-        return {
-          isOk: true,
-          data: [],
-        }
+        return { isOk: true, data: [] }
       }
 
       const response = await getMunicipalitiesService(provinceId)
 
       if (response?.status === 200) {
         this.municipalities = response.data || []
-        return {
-          isOk: true,
-          data: response.data,
-        }
+        return { isOk: true, data: response.data }
       }
 
       this.municipalities = []
-      return {
-        isOk: false,
-        data: response?.data || null,
-      }
+      return { isOk: false, data: response?.data || null }
     },
 
     async fetchPostalCodes(filters = {}) {
-      if (!filters.province_id || !filters.municipality_id) {
+      if (!filters.province_id) {
         this.postalCodes = []
-        return {
-          isOk: true,
-          data: [],
-        }
+        return { isOk: true, data: [] }
       }
 
       const response = await getPostalCodesService(filters)
 
       if (response?.status === 200) {
         this.postalCodes = response.data || []
-        return {
-          isOk: true,
-          data: response.data,
-        }
+        return { isOk: true, data: response.data }
       }
 
       this.postalCodes = []
-      return {
-        isOk: false,
-        data: response?.data || null,
-      }
+      return { isOk: false, data: response?.data || null }
     },
 
     resetMunicipalities() {

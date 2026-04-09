@@ -49,8 +49,13 @@ export const useUserStore = defineStore('user', {
       }
     },
 
-    async register(username, password, email = '') {
-      const response = await registerService({ username, password, email })
+    async register(username, password, email = '', rol = 'NORMAL') {
+      const response = await registerService({
+        username,
+        password,
+        email,
+        rol,
+      })
 
       if (response?.status === 201) {
         return {
