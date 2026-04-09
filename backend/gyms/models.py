@@ -32,12 +32,12 @@ class Municipality(models.Model):
 
 
 class Gym(models.Model):
-    owner = models.OneToOneField(
+    owner = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name="managed_gym",
+        related_name="managed_gyms",
     )
     name = models.CharField(max_length=255)
     slug = models.SlugField(unique=True)

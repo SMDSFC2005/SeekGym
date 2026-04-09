@@ -4,7 +4,7 @@
       <div class="top-bar">
         <div class="top-bar__actions">
           <button
-            v-if="canCreateGym && !myGym"
+            v-if="canCreateGym"
             class="action-button"
             @click="goToCreateGym"
           >
