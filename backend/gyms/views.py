@@ -8,6 +8,7 @@ from django.utils import timezone
 
 from gyms.models import Gym, GymAnnouncement, GymFollower, Municipality, Province
 from gyms.permissions import CanManageGym, IsGymApprovedOrSuperuser
+from gyms.services.profile_seed import seed_gym_occupancy_profiles
 from gyms.serializers import (
     GymAnnouncementCreateSerializer,
     GymCreateUpdateSerializer,
@@ -158,6 +159,8 @@ class GymCreateView(APIView):
         serializer = GymCreateUpdateSerializer(data=request.data, context={"request": request})
         serializer.is_valid(raise_exception=True)
         gym = serializer.save()
+
+        seed_gym_occupancy_profiles(gym)
 
         response_serializer = GymDetailSerializer(gym)
         return Response(response_serializer.data, status=status.HTTP_201_CREATED)
