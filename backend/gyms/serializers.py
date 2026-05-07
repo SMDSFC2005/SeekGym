@@ -1,8 +1,7 @@
-from django.shortcuts import get_object_or_404
 from django.utils.text import slugify
 from rest_framework import serializers
 
-from gyms.models import Gym, GymAnnouncement, Municipality, Province
+from gyms.models import Gym, GymAnnouncement, GymFollower, GymSchedule, Municipality, Province
 from gyms.services.occupancy import (
     get_best_time_today,
     get_current_occupancy_data,
@@ -26,6 +25,10 @@ def build_unique_slug(model_class, value, instance_id=None):
     return slug
 
 
+# ---------------------------------------------------------------------------
+# Location
+# ---------------------------------------------------------------------------
+
 class ProvinceSerializer(serializers.ModelSerializer):
     class Meta:
         model = Province
@@ -44,16 +47,14 @@ class PostalCodeOptionSerializer(serializers.Serializer):
     postal_code = serializers.CharField()
 
 
+# ---------------------------------------------------------------------------
+# Announcements
+# ---------------------------------------------------------------------------
+
 class GymAnnouncementSerializer(serializers.ModelSerializer):
     class Meta:
         model = GymAnnouncement
-        fields = (
-            "id",
-            "kind",
-            "title",
-            "content",
-            "created_at",
-        )
+        fields = ("id", "kind", "title", "content", "created_at")
 
 
 class GymAnnouncementCreateSerializer(serializers.ModelSerializer):
@@ -66,6 +67,34 @@ class GymAnnouncementCreateSerializer(serializers.ModelSerializer):
         return GymAnnouncement.objects.create(gym=gym, **validated_data)
 
 
+# ---------------------------------------------------------------------------
+# Schedule
+# ---------------------------------------------------------------------------
+
+class GymScheduleSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = GymSchedule
+        fields = ("day_type", "opening_hour", "closing_hour", "is_closed")
+
+
+class GymScheduleWriteSerializer(serializers.Serializer):
+    day_type = serializers.ChoiceField(choices=GymSchedule.DayType.choices)
+    opening_hour = serializers.IntegerField(min_value=0, max_value=23, default=7)
+    closing_hour = serializers.IntegerField(min_value=1, max_value=24, default=22)
+    is_closed = serializers.BooleanField(default=False)
+
+    def validate(self, attrs):
+        if not attrs.get("is_closed") and attrs["closing_hour"] <= attrs["opening_hour"]:
+            raise serializers.ValidationError(
+                "La hora de cierre debe ser posterior a la de apertura."
+            )
+        return attrs
+
+
+# ---------------------------------------------------------------------------
+# Gym — read
+# ---------------------------------------------------------------------------
+
 class GymBaseReadSerializer(serializers.ModelSerializer):
     province_id = serializers.SerializerMethodField()
     province = serializers.SerializerMethodField()
@@ -76,6 +105,7 @@ class GymBaseReadSerializer(serializers.ModelSerializer):
     current_status = serializers.SerializerMethodField()
     confidence = serializers.SerializerMethodField()
     best_time_today = serializers.SerializerMethodField()
+    is_following = serializers.SerializerMethodField()
 
     class Meta:
         model = Gym
@@ -98,6 +128,7 @@ class GymBaseReadSerializer(serializers.ModelSerializer):
             "current_status",
             "confidence",
             "best_time_today",
+            "is_following",
         )
 
     def _get_current_data(self, obj):
@@ -134,6 +165,12 @@ class GymBaseReadSerializer(serializers.ModelSerializer):
     def get_best_time_today(self, obj):
         return self._get_best_time_data(obj)
 
+    def get_is_following(self, obj):
+        request = self.context.get("request")
+        if not request or not request.user.is_authenticated:
+            return False
+        return GymFollower.objects.filter(user=request.user, gym=obj).exists()
+
 
 class GymHomeSerializer(GymBaseReadSerializer):
     pass
@@ -142,12 +179,14 @@ class GymHomeSerializer(GymBaseReadSerializer):
 class GymDetailSerializer(GymBaseReadSerializer):
     today_timeline = serializers.SerializerMethodField()
     announcements = serializers.SerializerMethodField()
+    schedule = serializers.SerializerMethodField()
     owner_id = serializers.IntegerField(read_only=True)
 
     class Meta(GymBaseReadSerializer.Meta):
         fields = GymBaseReadSerializer.Meta.fields + (
             "today_timeline",
             "announcements",
+            "schedule",
             "owner_id",
         )
 
@@ -158,6 +197,16 @@ class GymDetailSerializer(GymBaseReadSerializer):
         announcements = obj.announcements.filter(is_active=True).order_by("-created_at")
         return GymAnnouncementSerializer(announcements, many=True).data
 
+    def get_schedule(self, obj):
+        DAY_ORDER = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN", "HOL"]
+        schedules = {s.day_type: s for s in obj.schedules.all()}
+        ordered = [schedules[d] for d in DAY_ORDER if d in schedules]
+        return GymScheduleSerializer(ordered, many=True).data
+
+
+# ---------------------------------------------------------------------------
+# Gym — write
+# ---------------------------------------------------------------------------
 
 class GymCreateUpdateSerializer(serializers.ModelSerializer):
     province_id = serializers.PrimaryKeyRelatedField(
@@ -170,6 +219,7 @@ class GymCreateUpdateSerializer(serializers.ModelSerializer):
         source="municipality",
         write_only=True,
     )
+    schedule = GymScheduleWriteSerializer(many=True, required=False)
 
     class Meta:
         model = Gym
@@ -182,6 +232,7 @@ class GymCreateUpdateSerializer(serializers.ModelSerializer):
             "description",
             "price_per_month",
             "image_url",
+            "schedule",
         )
 
     def validate(self, attrs):
@@ -201,14 +252,32 @@ class GymCreateUpdateSerializer(serializers.ModelSerializer):
 
         return attrs
 
+    def _save_schedule(self, gym, schedule_data):
+        for entry in schedule_data:
+            GymSchedule.objects.update_or_create(
+                gym=gym,
+                day_type=entry["day_type"],
+                defaults={
+                    "opening_hour": entry["opening_hour"],
+                    "closing_hour": entry["closing_hour"],
+                    "is_closed": entry.get("is_closed", False),
+                },
+            )
+
     def create(self, validated_data):
+        schedule_data = validated_data.pop("schedule", [])
         request = self.context["request"]
         validated_data["owner"] = request.user
         validated_data["slug"] = build_unique_slug(Gym, validated_data["name"])
-        return super().create(validated_data)
+        gym = super().create(validated_data)
+        self._save_schedule(gym, schedule_data)
+        return gym
 
     def update(self, instance, validated_data):
+        schedule_data = validated_data.pop("schedule", None)
         if "name" in validated_data and validated_data["name"] != instance.name:
             instance.slug = build_unique_slug(Gym, validated_data["name"], instance_id=instance.id)
-
-        return super().update(instance, validated_data)
+        gym = super().update(instance, validated_data)
+        if schedule_data is not None:
+            self._save_schedule(gym, schedule_data)
+        return gym

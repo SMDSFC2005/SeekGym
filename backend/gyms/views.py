@@ -4,7 +4,9 @@ from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from gyms.models import Gym, Municipality, Province
+from django.utils import timezone
+
+from gyms.models import Gym, GymAnnouncement, GymFollower, Municipality, Province
 from gyms.permissions import CanManageGym, IsGymApprovedOrSuperuser
 from gyms.serializers import (
     GymAnnouncementCreateSerializer,
@@ -39,7 +41,7 @@ class GymHomeView(APIView):
         if postal_code:
             gyms = gyms.filter(postal_code=postal_code.strip())
 
-        serializer = GymHomeSerializer(gyms, many=True)
+        serializer = GymHomeSerializer(gyms, many=True, context={"request": request})
 
         return Response(
             {
@@ -110,11 +112,11 @@ class GymDetailView(APIView):
 
     def get(self, request, slug, *args, **kwargs):
         gym = get_object_or_404(
-            Gym.objects.select_related("province", "municipality", "owner").prefetch_related("announcements"),
+            Gym.objects.select_related("province", "municipality", "owner").prefetch_related("announcements", "schedules", "followers"),
             slug=slug,
             is_active=True,
         )
-        serializer = GymDetailSerializer(gym)
+        serializer = GymDetailSerializer(gym, context={"request": request})
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 
@@ -208,3 +210,73 @@ class GymAnnouncementCreateView(APIView):
             },
             status=status.HTTP_201_CREATED,
         )
+
+
+class FollowedGymsView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        followed_ids = GymFollower.objects.filter(user=request.user).values_list("gym_id", flat=True)
+        gyms = (
+            Gym.objects.filter(id__in=followed_ids, is_active=True)
+            .select_related("province", "municipality")
+            .prefetch_related("announcements")
+            .order_by("name")
+        )
+        serializer = GymHomeSerializer(gyms, many=True, context={"request": request})
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+class GymFollowView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, slug, *args, **kwargs):
+        gym = get_object_or_404(Gym, slug=slug, is_active=True)
+        follower, created = GymFollower.objects.get_or_create(user=request.user, gym=gym)
+
+        if not created:
+            follower.delete()
+            return Response({"following": False}, status=status.HTTP_200_OK)
+
+        return Response({"following": True}, status=status.HTTP_201_CREATED)
+
+
+class NotificationsView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+
+        if user.is_superuser:
+            from django.contrib.auth import get_user_model
+            User = get_user_model()
+            count = User.objects.filter(estado_gym="PENDIENTE").count()
+            return Response({"pending_requests": count, "unread_announcements": []})
+
+        followed = GymFollower.objects.filter(user=user).select_related("gym")
+        items = []
+        for f in followed:
+            announcements = GymAnnouncement.objects.filter(
+                gym=f.gym,
+                is_active=True,
+                created_at__gt=f.last_read_at,
+            ).order_by("-created_at")[:5]
+            for a in announcements:
+                items.append({
+                    "gym_name": f.gym.name,
+                    "gym_slug": f.gym.slug,
+                    "title": a.title,
+                    "kind": a.kind,
+                    "created_at": a.created_at,
+                })
+
+        items.sort(key=lambda x: x["created_at"], reverse=True)
+
+        return Response({
+            "pending_requests": 0,
+            "unread_announcements": items[:10],
+        })
+
+    def post(self, request):
+        GymFollower.objects.filter(user=request.user).update(last_read_at=timezone.now())
+        return Response({"ok": True})

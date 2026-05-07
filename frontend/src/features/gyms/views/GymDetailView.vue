@@ -1,6 +1,10 @@
 <template>
   <div class="detail-container">
     <div class="detail-box">
+      <div class="top-bar">
+        <button class="back-btn" @click="router.push('/home')">← Volver</button>
+      </div>
+
       <p v-if="detailLoading" class="info-message">Cargando gimnasio...</p>
       <p v-else-if="detailError" class="error">{{ detailError }}</p>
 
@@ -15,6 +19,16 @@
           <span>⭐ {{ gymDetail.rating }}</span>
           <span>{{ gymDetail.price_per_month }} €/mes</span>
           <span>{{ gymDetail.reviews_count }} reseñas</span>
+
+          <button
+            v-if="canFollow"
+            class="follow-btn"
+            :class="{ 'follow-btn--following': isFollowing }"
+            :disabled="followLoading"
+            @click="toggleFollow"
+          >
+            {{ isFollowing ? '✓ Siguiendo' : '+ Seguir' }}
+          </button>
         </div>
 
         <img
@@ -92,6 +106,29 @@
             </template>
 
             <p v-else class="muted-text">Sin datos</p>
+          </div>
+        </div>
+
+        <!-- Horario visible para todos -->
+        <div v-if="gymDetail.schedule?.length" class="timeline-section">
+          <h2>Horario</h2>
+
+          <div class="schedule-view">
+            <div
+              v-for="row in scheduleRows"
+              :key="row.day_type"
+              class="schedule-view-row"
+              :class="{
+                'schedule-view-row--today': row.isToday,
+                'schedule-view-row--closed': row.is_closed,
+                'schedule-view-row--holiday': row.day_type === 'HOL',
+              }"
+            >
+              <span class="schedule-view-day">{{ row.label }}</span>
+              <span v-if="row.is_closed" class="schedule-view-hours schedule-view-hours--closed">Cerrado</span>
+              <span v-else class="schedule-view-hours">{{ pad(row.opening_hour) }}:00 – {{ pad(row.closing_hour) }}:00</span>
+              <span v-if="row.isToday" class="badge badge--current">Hoy</span>
+            </div>
           </div>
         </div>
 
@@ -251,6 +288,41 @@
                 <textarea v-model="editForm.description" rows="4"></textarea>
               </div>
 
+              <div class="field field--full">
+                <label class="section-label">Horario</label>
+                <p class="section-hint">Los cambios afectan a las recomendaciones de horario.</p>
+
+                <div class="schedule-table">
+                  <div class="schedule-header">
+                    <span>Día</span>
+                    <span>Cerrado</span>
+                    <span>Abre</span>
+                    <span>Cierra</span>
+                  </div>
+
+                  <div
+                    v-for="row in editForm.schedule"
+                    :key="row.day_type"
+                    class="schedule-row"
+                    :class="{ 'schedule-row--closed': row.is_closed }"
+                  >
+                    <span class="schedule-day">{{ row.label }}</span>
+
+                    <label class="schedule-checkbox">
+                      <input type="checkbox" v-model="row.is_closed" />
+                    </label>
+
+                    <select v-model="row.opening_hour" :disabled="row.is_closed">
+                      <option v-for="h in hours" :key="h" :value="h">{{ pad(h) }}:00</option>
+                    </select>
+
+                    <select v-model="row.closing_hour" :disabled="row.is_closed">
+                      <option v-for="h in closingHours" :key="h" :value="h">{{ pad(h) }}:00</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
               <div class="actions">
                 <button type="submit" :disabled="saveLoading">
                   {{ saveLoading ? 'Guardando...' : 'Guardar cambios' }}
@@ -298,13 +370,40 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
+
+const hours = Array.from({ length: 24 }, (_, i) => i)
+const closingHours = Array.from({ length: 24 }, (_, i) => i + 1)
+
+function pad(h) {
+  return String(h).padStart(2, '0')
+}
+
+const SCHEDULE_LABELS = {
+  MON: 'Lunes', TUE: 'Martes', WED: 'Miércoles', THU: 'Jueves',
+  FRI: 'Viernes', SAT: 'Sábado', SUN: 'Domingo', HOL: 'Festivos',
+}
+
+const DAY_ORDER = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN', 'HOL']
+
+const DEFAULT_SCHEDULE = [
+  { day_type: 'MON', opening_hour: 7,  closing_hour: 22, is_closed: false },
+  { day_type: 'TUE', opening_hour: 7,  closing_hour: 22, is_closed: false },
+  { day_type: 'WED', opening_hour: 7,  closing_hour: 22, is_closed: false },
+  { day_type: 'THU', opening_hour: 7,  closing_hour: 22, is_closed: false },
+  { day_type: 'FRI', opening_hour: 7,  closing_hour: 22, is_closed: false },
+  { day_type: 'SAT', opening_hour: 9,  closing_hour: 20, is_closed: false },
+  { day_type: 'SUN', opening_hour: 10, closing_hour: 16, is_closed: false },
+  { day_type: 'HOL', opening_hour: 10, closing_hour: 14, is_closed: false },
+]
+import { useRoute, useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { useGymsStore } from '../store/gymStore'
 import { useUserStore } from '../../auth/store/userStore'
+import { toggleFollowGymService } from '../services/gymsService'
 
 const route = useRoute()
+const router = useRouter()
 const gymsStore = useGymsStore()
 const userStore = useUserStore()
 
@@ -330,6 +429,7 @@ const editForm = reactive({
   description: '',
   price_per_month: '',
   image_url: '',
+  schedule: DEFAULT_SCHEDULE.map((r) => ({ ...r, label: SCHEDULE_LABELS[r.day_type] })),
 })
 
 const announcementForm = reactive({
@@ -357,16 +457,49 @@ const timelineItems = computed(() => {
     }))
 })
 
+const todayDayType = computed(() => {
+  const map = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN']
+  return map[new Date().getDay() === 0 ? 6 : new Date().getDay() - 1]
+})
+
+const scheduleRows = computed(() => {
+  const schedule = gymDetail.value?.schedule ?? []
+  return schedule.map((row) => ({
+    ...row,
+    label: SCHEDULE_LABELS[row.day_type],
+    isToday: row.day_type === todayDayType.value,
+  }))
+})
+
 const canEdit = computed(() => {
+  if (!userStore.user || !gymDetail.value) return false
+  if (userStore.user.is_superuser && myGym.value?.slug === gymDetail.value.slug) return true
   return (
-    userStore.user &&
     userStore.user.rol === 'GIMNASIO' &&
     userStore.user.estado_gym === 'APROBADO' &&
-    myGym.value &&
-    gymDetail.value &&
-    myGym.value.slug === gymDetail.value.slug
+    myGym.value?.slug === gymDetail.value.slug
   )
 })
+
+const followLoading = ref(false)
+const isFollowing = computed(() => gymDetail.value?.is_following ?? false)
+const canFollow = computed(() => {
+  if (!userStore.user || !gymDetail.value) return false
+  return !canEdit.value
+})
+
+async function toggleFollow() {
+  if (followLoading.value) return
+  followLoading.value = true
+  try {
+    const response = await toggleFollowGymService(route.params.slug)
+    if (response?.status === 200 || response?.status === 201) {
+      gymDetail.value.is_following = !gymDetail.value.is_following
+    }
+  } finally {
+    followLoading.value = false
+  }
+}
 
 function getStatusLabel(status) {
   if (status === 'GOOD') return 'Buen momento'
@@ -411,6 +544,16 @@ function fillEditForm() {
   editForm.description = gymDetail.value.description || ''
   editForm.price_per_month = gymDetail.value.price_per_month || ''
   editForm.image_url = gymDetail.value.image_url || ''
+
+  const apiSchedule = gymDetail.value.schedule ?? []
+  const byDayType = Object.fromEntries(apiSchedule.map((s) => [s.day_type, s]))
+  editForm.schedule = DAY_ORDER.map((d) => ({
+    day_type: d,
+    label: SCHEDULE_LABELS[d],
+    opening_hour: byDayType[d]?.opening_hour ?? DEFAULT_SCHEDULE.find((r) => r.day_type === d)?.opening_hour ?? 7,
+    closing_hour: byDayType[d]?.closing_hour ?? DEFAULT_SCHEDULE.find((r) => r.day_type === d)?.closing_hour ?? 22,
+    is_closed: byDayType[d]?.is_closed ?? false,
+  }))
 }
 
 async function onProvinceChange() {
@@ -432,6 +575,12 @@ async function onSaveGym() {
     description: editForm.description,
     price_per_month: editForm.price_per_month,
     image_url: editForm.image_url,
+    schedule: editForm.schedule.map(({ day_type, opening_hour, closing_hour, is_closed }) => ({
+      day_type,
+      opening_hour,
+      closing_hour,
+      is_closed,
+    })),
   })
 
   if (result.isOk) {
@@ -467,7 +616,10 @@ onMounted(async () => {
   await gymsStore.fetchGymDetail(route.params.slug)
   await gymsStore.fetchProvinces()
 
-  if (userStore.user?.rol === 'GIMNASIO' && userStore.user?.estado_gym === 'APROBADO') {
+  if (
+    userStore.user?.is_superuser ||
+    (userStore.user?.rol === 'GIMNASIO' && userStore.user?.estado_gym === 'APROBADO')
+  ) {
     await gymsStore.fetchMyGym()
   }
 
@@ -484,6 +636,52 @@ onMounted(async () => {
   min-height: 100vh;
   background: #f3f4f6;
   padding: 40px 20px;
+}
+
+.top-bar {
+  margin-bottom: 20px;
+}
+
+.back-btn {
+  background: none;
+  border: none;
+  color: #6b7280;
+  cursor: pointer;
+  font-size: 0.95rem;
+  padding: 0;
+}
+
+.back-btn:hover {
+  color: #111827;
+}
+
+.follow-btn {
+  margin-left: auto;
+  padding: 6px 14px;
+  border: 1.5px solid #6b7280;
+  border-radius: 999px;
+  background: transparent;
+  color: #374151;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 600;
+  transition: all 0.15s;
+}
+
+.follow-btn:hover {
+  border-color: #111827;
+  color: #111827;
+}
+
+.follow-btn--following {
+  background: #111827;
+  border-color: #111827;
+  color: white;
+}
+
+.follow-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .detail-box {
@@ -864,6 +1062,123 @@ button:disabled {
 .error {
   color: #dc2626;
   font-weight: 500;
+}
+
+.schedule-view {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.schedule-view-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 18px;
+  border-top: 1px solid #e5e7eb;
+  transition: background 0.15s;
+}
+
+.schedule-view-row:first-child {
+  border-top: none;
+}
+
+.schedule-view-row--today {
+  background: #f0fdf4;
+}
+
+.schedule-view-row--closed {
+  background: #f9fafb;
+}
+
+.schedule-view-row--holiday {
+  border-top: 2px solid #e5e7eb;
+  background: #fefce8;
+}
+
+.schedule-view-day {
+  width: 100px;
+  font-weight: 600;
+  color: #111827;
+  flex-shrink: 0;
+}
+
+.schedule-view-hours {
+  color: #374151;
+  flex: 1;
+}
+
+.schedule-view-hours--closed {
+  color: #9ca3af;
+  font-style: italic;
+}
+
+.section-label {
+  font-weight: 600;
+  color: #111827;
+  font-size: 1rem;
+}
+
+.section-hint {
+  color: #6b7280;
+  font-size: 0.9rem;
+  margin: 0;
+}
+
+.schedule-table {
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.schedule-header {
+  display: grid;
+  grid-template-columns: 110px 80px 1fr 1fr;
+  gap: 12px;
+  padding: 10px 16px;
+  background: #f3f4f6;
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: #374151;
+}
+
+.schedule-row {
+  display: grid;
+  grid-template-columns: 110px 80px 1fr 1fr;
+  gap: 12px;
+  padding: 10px 16px;
+  align-items: center;
+  border-top: 1px solid #e5e7eb;
+  transition: background 0.15s;
+}
+
+.schedule-row--closed {
+  background: #f9fafb;
+  opacity: 0.7;
+}
+
+.schedule-day {
+  font-weight: 500;
+  color: #111827;
+}
+
+.schedule-checkbox {
+  display: flex;
+  justify-content: center;
+}
+
+.schedule-checkbox input {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+}
+
+select:disabled {
+  background: #f3f4f6;
+  color: #9ca3af;
+  cursor: not-allowed;
 }
 
 @media (max-width: 768px) {

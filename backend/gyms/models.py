@@ -1,5 +1,6 @@
 from django.conf import settings
 from django.db import models
+from django.utils import timezone
 from django.core.validators import MinValueValidator, MaxValueValidator
 
 
@@ -113,6 +114,38 @@ class GymAnnouncement(models.Model):
         return f"{self.gym.name} - {self.kind} - {self.title}"
 
 
+class GymSchedule(models.Model):
+    class DayType(models.TextChoices):
+        MON = "MON", "Lunes"
+        TUE = "TUE", "Martes"
+        WED = "WED", "Miércoles"
+        THU = "THU", "Jueves"
+        FRI = "FRI", "Viernes"
+        SAT = "SAT", "Sábado"
+        SUN = "SUN", "Domingo"
+        HOL = "HOL", "Festivo"
+
+    gym = models.ForeignKey(Gym, on_delete=models.CASCADE, related_name="schedules")
+    day_type = models.CharField(max_length=3, choices=DayType.choices)
+    opening_hour = models.IntegerField(
+        validators=[MinValueValidator(0), MaxValueValidator(23)],
+        default=7,
+    )
+    closing_hour = models.IntegerField(
+        validators=[MinValueValidator(1), MaxValueValidator(24)],
+        default=22,
+    )
+    is_closed = models.BooleanField(default=False)
+
+    class Meta:
+        unique_together = ("gym", "day_type")
+
+    def __str__(self):
+        if self.is_closed:
+            return f"{self.gym.name} - {self.day_type}: Cerrado"
+        return f"{self.gym.name} - {self.day_type}: {self.opening_hour:02d}:00–{self.closing_hour:02d}:00"
+
+
 class GymOccupancyProfile(models.Model):
     class DayOfWeek(models.IntegerChoices):
         MONDAY = 0, "Monday"
@@ -156,3 +189,20 @@ class GymOccupancyProfile(models.Model):
 
     def __str__(self):
         return f"{self.gym.name} - {self.day_of_week} - {self.hour}:00"
+
+
+class GymFollower(models.Model):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="followed_gyms",
+    )
+    gym = models.ForeignKey(Gym, on_delete=models.CASCADE, related_name="followers")
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_read_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        unique_together = ("user", "gym")
+
+    def __str__(self):
+        return f"{self.user.username} → {self.gym.name}"

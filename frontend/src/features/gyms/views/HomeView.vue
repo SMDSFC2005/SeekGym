@@ -4,6 +4,14 @@
       <div class="top-bar">
         <div class="top-bar__actions">
           <button
+            v-if="userStore.user"
+            class="action-button action-button--secondary"
+            @click="router.push('/gyms/seguidos')"
+          >
+            Mis seguidos
+          </button>
+
+          <button
             v-if="canCreateGym"
             class="action-button"
             @click="goToCreateGym"
@@ -18,6 +26,56 @@
           >
             Gestionar mi gimnasio
           </button>
+
+          <!-- Notification bell -->
+          <div class="notif-wrapper" v-if="userStore.user">
+            <button class="notif-btn" @click="toggleNotifPanel">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+                <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+              </svg>
+              <span v-if="notificationsStore.total > 0" class="notif-badge">
+                {{ notificationsStore.total > 9 ? '9+' : notificationsStore.total }}
+              </span>
+            </button>
+
+            <div v-if="showNotifPanel" class="notif-overlay" @click="showNotifPanel = false" />
+
+            <div v-if="showNotifPanel" class="notif-panel">
+              <template v-if="userStore.user.is_superuser">
+                <p v-if="notificationsStore.pendingRequests > 0" class="notif-count">
+                  {{ notificationsStore.pendingRequests }} solicitud(es) pendiente(s)
+                </p>
+                <p v-else class="notif-empty">No hay solicitudes pendientes</p>
+                <button
+                  class="notif-action-btn"
+                  @click="router.push('/admin/solicitudes'); showNotifPanel = false"
+                >
+                  Ver solicitudes
+                </button>
+              </template>
+
+              <template v-else>
+                <div v-if="!notificationsStore.unreadAnnouncements.length" class="notif-empty">
+                  Sin notificaciones nuevas
+                </div>
+                <template v-else>
+                  <div
+                    v-for="ann in notificationsStore.unreadAnnouncements"
+                    :key="ann.gym_slug + ann.title + ann.created_at"
+                    class="notif-item"
+                    @click="router.push(`/gyms/${ann.gym_slug}`); showNotifPanel = false"
+                  >
+                    <strong class="notif-item-gym">{{ ann.gym_name }}</strong>
+                    <span class="notif-item-title">{{ ann.title }}</span>
+                  </div>
+                  <button class="notif-action-btn" @click="notificationsStore.markRead(); showNotifPanel = false">
+                    Marcar como leído
+                  </button>
+                </template>
+              </template>
+            </div>
+          </div>
 
           <button class="logout-button" @click="onLogout">
             Cerrar sesión
@@ -60,17 +118,21 @@
 </template>
 
 <script setup>
-import { computed, reactive, onMounted } from 'vue'
+import { computed, reactive, onMounted, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useRouter } from 'vue-router'
 import { useGymsStore } from '../store/gymStore'
 import { useUserStore } from '../../auth/store/userStore'
+import { useNotificationsStore } from '@/stores/notificationsStore'
 import GymFilters from '../components/GymFilters.vue'
 import GymCard from '../components/GymCard.vue'
 
 const router = useRouter()
 const userStore = useUserStore()
 const gymsStore = useGymsStore()
+const notificationsStore = useNotificationsStore()
+
+const showNotifPanel = ref(false)
 
 const {
   gyms,
@@ -90,12 +152,14 @@ const filters = reactive({
 })
 
 const canCreateGym = computed(() => {
-  return (
-    userStore.user &&
-    userStore.user.rol === 'GIMNASIO' &&
-    userStore.user.estado_gym === 'APROBADO'
-  )
+  if (!userStore.user) return false
+  if (userStore.user.is_superuser) return true
+  return userStore.user.rol === 'GIMNASIO' && userStore.user.estado_gym === 'APROBADO'
 })
+
+function toggleNotifPanel() {
+  showNotifPanel.value = !showNotifPanel.value
+}
 
 function onLogout() {
   userStore.logout()
@@ -179,6 +243,8 @@ onMounted(async () => {
     municipality_id: filters.municipality_id,
     postal_code: filters.postal_code,
   })
+
+  await notificationsStore.fetch()
 })
 </script>
 
@@ -236,6 +302,7 @@ onMounted(async () => {
   display: flex;
   gap: 12px;
   flex-wrap: wrap;
+  align-items: center;
 }
 
 .logout-button,
@@ -254,5 +321,123 @@ onMounted(async () => {
 
 .action-button {
   background: #f97316;
+}
+
+.action-button--secondary {
+  background: #6b7280;
+}
+
+/* Notification bell */
+.notif-wrapper {
+  position: relative;
+}
+
+.notif-btn {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 8px 10px;
+  cursor: pointer;
+  color: #374151;
+}
+
+.notif-btn:hover {
+  background: #e5e7eb;
+}
+
+.notif-badge {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  background: #ef4444;
+  color: white;
+  font-size: 0.7rem;
+  font-weight: 700;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+}
+
+.notif-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 99;
+}
+
+.notif-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  width: 280px;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12);
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.notif-count {
+  color: #111827;
+  font-weight: 600;
+  font-size: 0.95rem;
+  margin: 0;
+}
+
+.notif-empty {
+  color: #6b7280;
+  font-size: 0.9rem;
+  margin: 0;
+}
+
+.notif-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.notif-item:hover {
+  background: #f9fafb;
+}
+
+.notif-item-gym {
+  font-size: 0.85rem;
+  color: #111827;
+}
+
+.notif-item-title {
+  font-size: 0.82rem;
+  color: #6b7280;
+}
+
+.notif-action-btn {
+  background: #111827;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-align: center;
+}
+
+.notif-action-btn:hover {
+  background: #1f2937;
 }
 </style>

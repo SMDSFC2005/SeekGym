@@ -97,3 +97,35 @@ export async function getPostalCodesService(filters = {}) {
     return error.response
   }
 }
+
+export async function getFollowedGymsService() {
+  try {
+    return await apiCore.get('/gyms/seguidos/')
+  } catch (error) {
+    return error.response
+  }
+}
+
+export async function toggleFollowGymService(slug) {
+  try {
+    return await apiCore.post(`/gyms/${slug}/follow/`)
+  } catch (error) {
+    return error.response
+  }
+}
+
+export async function getNotificationsService() {
+  try {
+    return await apiCore.get('/gyms/notifications/')
+  } catch (error) {
+    return error.response
+  }
+}
+
+export async function markNotificationsReadService() {
+  try {
+    return await apiCore.post('/gyms/notifications/')
+  } catch (error) {
+    return error.response
+  }
+}

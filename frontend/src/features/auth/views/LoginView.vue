@@ -84,7 +84,7 @@ async function onSubmit() {
   loading.value = false
 
   if (result.isOk) {
-    router.push('/')
+    router.push('/home')
   } else {
     error.value = result.message
   }
