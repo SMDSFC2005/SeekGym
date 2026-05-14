@@ -10,19 +10,11 @@ const props = defineProps({
     type: [String, Number],
     default: '',
   },
-  postalCode: {
-    type: String,
-    default: '',
-  },
   provinces: {
     type: Array,
     default: () => [],
   },
   municipalities: {
-    type: Array,
-    default: () => [],
-  },
-  postalCodes: {
     type: Array,
     default: () => [],
   },
@@ -37,21 +29,18 @@ const emit = defineEmits([
 const form = reactive({
   province_id: props.provinceId || '',
   municipality_id: props.municipalityId || '',
-  postal_code: props.postalCode || '',
 })
 
 watch(
-  () => [props.provinceId, props.municipalityId, props.postalCode],
-  ([provinceId, municipalityId, postalCode]) => {
+  () => [props.provinceId, props.municipalityId],
+  ([provinceId, municipalityId]) => {
     form.province_id = provinceId || ''
     form.municipality_id = municipalityId || ''
-    form.postal_code = postalCode || ''
   }
 )
 
 function onProvinceChange() {
   form.municipality_id = ''
-  form.postal_code = ''
 
   emit('province-change', {
     province_id: form.province_id,
@@ -59,8 +48,6 @@ function onProvinceChange() {
 }
 
 function onMunicipalityChange() {
-  form.postal_code = ''
-
   emit('municipality-change', {
     province_id: form.province_id,
     municipality_id: form.municipality_id,
@@ -71,7 +58,6 @@ function submit() {
   emit('apply', {
     province_id: form.province_id,
     municipality_id: form.municipality_id,
-    postal_code: form.postal_code,
   })
 }
 </script>
@@ -115,24 +101,6 @@ function submit() {
       </select>
     </div>
 
-    <div>
-      <label for="postal_code">Código postal</label>
-      <select
-        id="postal_code"
-        v-model="form.postal_code"
-        :disabled="!form.municipality_id"
-      >
-        <option value="">Todos</option>
-        <option
-          v-for="item in postalCodes"
-          :key="item.postal_code"
-          :value="item.postal_code"
-        >
-          {{ item.postal_code }}
-        </option>
-      </select>
-    </div>
-
     <button type="submit">Aplicar</button>
   </form>
 </template>
@@ -140,7 +108,7 @@ function submit() {
 <style scoped>
 .filters {
   display: grid;
-  grid-template-columns: 1fr 1fr 220px auto;
+  grid-template-columns: 1fr 1fr auto;
   gap: 1rem;
   align-items: end;
   margin-bottom: 1.5rem;
@@ -175,6 +143,6 @@ function submit() {
 @media (max-width: 768px) {
   .filters {
     grid-template-columns: 1fr;
-  } 
+  }
 }
 </style>

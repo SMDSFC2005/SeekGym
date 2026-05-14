@@ -6,6 +6,14 @@
           <button
             v-if="userStore.user"
             class="action-button action-button--secondary"
+            @click="router.push('/perfil')"
+          >
+            Mi perfil
+          </button>
+
+          <button
+            v-if="userStore.user"
+            class="action-button action-button--secondary"
             @click="router.push('/gyms/seguidos')"
           >
             Mis seguidos
@@ -88,13 +96,20 @@
         Consulta el estado actual de tu gym y descubre cuál es la mejor hora de hoy para entrenar.
       </p>
 
+      <div class="search-bar">
+        <input
+          v-model="searchInput"
+          type="text"
+          placeholder="Buscar gimnasio por nombre..."
+          class="search-input"
+        />
+      </div>
+
       <GymFilters
         :province-id="filters.province_id"
         :municipality-id="filters.municipality_id"
-        :postal-code="filters.postal_code"
         :provinces="provinces"
         :municipalities="municipalities"
-        :postal-codes="postalCodes"
         @province-change="onProvinceChange"
         @municipality-change="onMunicipalityChange"
         @apply="onApplyFilters"
@@ -118,7 +133,7 @@
 </template>
 
 <script setup>
-import { computed, reactive, onMounted, ref } from 'vue'
+import { computed, reactive, onMounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useRouter } from 'vue-router'
 import { useGymsStore } from '../store/gymStore'
@@ -141,14 +156,26 @@ const {
   currentFilters,
   provinces,
   municipalities,
-  postalCodes,
   myGym,
 } = storeToRefs(gymsStore)
 
 const filters = reactive({
   province_id: '',
   municipality_id: '',
-  postal_code: '',
+})
+
+const searchInput = ref('')
+let searchDebounce = null
+
+watch(searchInput, (value) => {
+  clearTimeout(searchDebounce)
+  searchDebounce = setTimeout(() => {
+    gymsStore.fetchHomeGyms({
+      province_id: filters.province_id,
+      municipality_id: filters.municipality_id,
+      search: value.trim(),
+    })
+  }, 300)
 })
 
 const canCreateGym = computed(() => {
@@ -179,10 +206,8 @@ function goToMyGym() {
 async function onProvinceChange(payload) {
   filters.province_id = payload.province_id
   filters.municipality_id = ''
-  filters.postal_code = ''
 
   gymsStore.resetMunicipalities()
-  gymsStore.resetPostalCodes()
 
   if (filters.province_id) {
     await gymsStore.fetchMunicipalities(filters.province_id)
@@ -192,46 +217,26 @@ async function onProvinceChange(payload) {
 async function onMunicipalityChange(payload) {
   filters.province_id = payload.province_id
   filters.municipality_id = payload.municipality_id
-  filters.postal_code = ''
-
-  gymsStore.resetPostalCodes()
-
-  if (filters.province_id) {
-    await gymsStore.fetchPostalCodes({
-      province_id: filters.province_id,
-      municipality_id: filters.municipality_id,
-    })
-  }
 }
 
 async function onApplyFilters(newFilters) {
   filters.province_id = newFilters.province_id
   filters.municipality_id = newFilters.municipality_id
-  filters.postal_code = newFilters.postal_code
 
   await gymsStore.fetchHomeGyms({
     province_id: filters.province_id,
     municipality_id: filters.municipality_id,
-    postal_code: filters.postal_code,
   })
 }
 
 onMounted(async () => {
   filters.province_id = currentFilters.value.province_id || ''
   filters.municipality_id = currentFilters.value.municipality_id || ''
-  filters.postal_code = currentFilters.value.postal_code || ''
 
   await gymsStore.fetchProvinces()
 
   if (filters.province_id) {
     await gymsStore.fetchMunicipalities(filters.province_id)
-  }
-
-  if (filters.province_id) {
-    await gymsStore.fetchPostalCodes({
-      province_id: filters.province_id,
-      municipality_id: filters.municipality_id,
-    })
   }
 
   if (canCreateGym.value) {
@@ -241,7 +246,6 @@ onMounted(async () => {
   await gymsStore.fetchHomeGyms({
     province_id: filters.province_id,
     municipality_id: filters.municipality_id,
-    postal_code: filters.postal_code,
   })
 
   await notificationsStore.fetch()
@@ -273,7 +277,25 @@ onMounted(async () => {
 
 .subtitle {
   color: #6b7280;
-  margin-bottom: 24px;
+  margin-bottom: 20px;
+}
+
+.search-bar {
+  margin-bottom: 16px;
+}
+
+.search-input {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: 1px solid #d1d5db;
+  border-radius: 12px;
+  font-size: 1rem;
+  box-sizing: border-box;
+  outline: none;
+}
+
+.search-input:focus {
+  border-color: #9ca3af;
 }
 
 .info-message {

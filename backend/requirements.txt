@@ -1,0 +1,11 @@
+asgiref==3.11.0
+django==6.0.1
+django-cors-headers==4.9.0
+djangorestframework==3.16.1
+djangorestframework-simplejwt==5.5.1
+holidays==0.95
+PyJWT==2.10.1
+python-dateutil==2.9.0.post0
+six==1.17.0
+sqlparse==0.5.5
+tzdata==2025.3

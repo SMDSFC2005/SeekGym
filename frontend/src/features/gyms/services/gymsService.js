@@ -11,8 +11,8 @@ export async function getHomeGymsService(filters = {}) {
     params.municipality_id = filters.municipality_id
   }
 
-  if (filters.postal_code) {
-    params.postal_code = filters.postal_code
+  if (filters.search) {
+    params.search = filters.search
   }
 
   try {
@@ -49,6 +49,14 @@ export async function createGymService(payload) {
 export async function updateGymService(slug, payload) {
   try {
     return await apiCore.patch(`/gyms/${slug}/manage/`, payload)
+  } catch (error) {
+    return error.response
+  }
+}
+
+export async function deleteGymService(slug) {
+  try {
+    return await apiCore.delete(`/gyms/${slug}/manage/`)
   } catch (error) {
     return error.response
   }

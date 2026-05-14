@@ -4,6 +4,7 @@ import RegisterView from '@/features/auth/views/RegisterView.vue'
 import HomeView from '@/features/gyms/views/HomeView.vue'
 import GymCreateView from '@/features/gyms/views/GymCreateView.vue'
 import AdminRequestsView from '@/features/admin/views/AdminRequestsView.vue'
+import ProfileView from '@/features/auth/views/ProfileView.vue'
 import { useUserStore } from '@/features/auth/store/userStore'
 
 const routes = [
@@ -41,6 +42,12 @@ const routes = [
     path: '/gyms/:slug',
     name: 'gym-detail',
     component: () => import('@/features/gyms/views/GymDetailView.vue'),
+  },
+  {
+    path: '/perfil',
+    name: 'profile',
+    component: ProfileView,
+    meta: { requiresAuth: true },
   },
   {
     path: '/admin/solicitudes',

@@ -26,7 +26,7 @@ class GymHomeView(APIView):
     def get(self, request, *args, **kwargs):
         province_id = request.query_params.get("province_id")
         municipality_id = request.query_params.get("municipality_id")
-        postal_code = request.query_params.get("postal_code")
+        search = request.query_params.get("search", "").strip()
 
         gyms = Gym.objects.filter(is_active=True).select_related(
             "province",
@@ -39,8 +39,8 @@ class GymHomeView(APIView):
         if municipality_id:
             gyms = gyms.filter(municipality_id=municipality_id)
 
-        if postal_code:
-            gyms = gyms.filter(postal_code=postal_code.strip())
+        if search:
+            gyms = gyms.filter(name__icontains=search)
 
         serializer = GymHomeSerializer(gyms, many=True, context={"request": request})
 
@@ -49,7 +49,7 @@ class GymHomeView(APIView):
                 "filters": {
                     "province_id": province_id,
                     "municipality_id": municipality_id,
-                    "postal_code": postal_code,
+                    "search": search,
                 },
                 "count": len(serializer.data),
                 "results": serializer.data,
@@ -187,6 +187,15 @@ class GymUpdateView(APIView):
 
         response_serializer = GymDetailSerializer(gym)
         return Response(response_serializer.data, status=status.HTTP_200_OK)
+
+    def delete(self, request, slug, *args, **kwargs):
+        gym = get_object_or_404(
+            Gym.objects.select_related("owner"),
+            slug=slug,
+        )
+        self.check_object_permissions(request, gym)
+        gym.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class GymAnnouncementCreateView(APIView):

@@ -91,17 +91,46 @@
               </p>
 
               <p
-                v-if="gymDetail.best_time_today.score !== undefined && gymDetail.best_time_today.score !== null"
-                class="muted-text"
-              >
-                Score: {{ formatScore(gymDetail.best_time_today.score) }}
-              </p>
-
-              <p
                 v-if="gymDetail.best_time_today.reason"
                 class="recommendation-reason"
               >
                 {{ gymDetail.best_time_today.reason }}
+              </p>
+            </template>
+
+            <p v-else class="muted-text">Sin datos</p>
+          </div>
+
+          <div class="stat-card stat-card--tomorrow">
+            <span class="stat-label">Mejor hora mañana</span>
+
+            <strong class="stat-value">
+              {{ gymDetail.best_time_tomorrow ? gymDetail.best_time_tomorrow.label : '—' }}
+            </strong>
+
+            <template v-if="gymDetail.best_time_tomorrow">
+              <p class="stat-status">
+                {{ gymDetail.best_time_tomorrow.occupancy_percent }}% ocupado ·
+                {{ getStatusLabel(getStatusFromOccupancy(gymDetail.best_time_tomorrow.occupancy_percent)) }}
+              </p>
+
+              <div class="mini-progress">
+                <div
+                  class="mini-progress-bar"
+                  :class="getOccupancyClass(gymDetail.best_time_tomorrow.occupancy_percent)"
+                  :style="{ width: gymDetail.best_time_tomorrow.occupancy_percent + '%' }"
+                />
+              </div>
+
+              <p v-if="gymDetail.best_time_tomorrow.confidence !== null" class="muted-text">
+                Confianza: {{ gymDetail.best_time_tomorrow.confidence }}%
+              </p>
+
+              <p
+                v-if="gymDetail.best_time_tomorrow.reason"
+                class="recommendation-reason"
+              >
+                {{ gymDetail.best_time_tomorrow.reason }}
               </p>
             </template>
 
@@ -364,6 +393,14 @@
             </form>
           </div>
         </template>
+
+        <div v-if="canDelete" class="danger-zone">
+          <h2>Zona de peligro</h2>
+          <p>Una vez eliminado el gimnasio no se puede recuperar.</p>
+          <button class="btn-delete" :disabled="deleteLoading" @click="onDeleteGym">
+            {{ deleteLoading ? 'Eliminando...' : 'Eliminar gimnasio' }}
+          </button>
+        </div>
       </template>
     </div>
   </div>
@@ -400,7 +437,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { useGymsStore } from '../store/gymStore'
 import { useUserStore } from '../../auth/store/userStore'
-import { toggleFollowGymService } from '../services/gymsService'
+import { toggleFollowGymService, deleteGymService } from '../services/gymsService'
 
 const route = useRoute()
 const router = useRouter()
@@ -487,6 +524,23 @@ const canFollow = computed(() => {
   if (!userStore.user || !gymDetail.value) return false
   return !canEdit.value
 })
+
+const deleteLoading = ref(false)
+const canDelete = computed(() => {
+  if (!userStore.user || !gymDetail.value) return false
+  if (userStore.user.is_superuser) return true
+  return canEdit.value
+})
+
+async function onDeleteGym() {
+  if (!confirm(`¿Seguro que quieres eliminar "${gymDetail.value.name}"? Esta acción no se puede deshacer.`)) return
+  deleteLoading.value = true
+  const response = await deleteGymService(route.params.slug)
+  if (response?.status === 204) {
+    router.push('/home')
+  }
+  deleteLoading.value = false
+}
 
 async function toggleFollow() {
   if (followLoading.value) return
@@ -728,7 +782,7 @@ onMounted(async () => {
 
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 16px;
   margin-bottom: 32px;
 }
@@ -743,6 +797,11 @@ onMounted(async () => {
 .stat-card--highlight {
   border: 1px solid #dbeafe;
   background: linear-gradient(180deg, #f8fbff 0%, #f3f8ff 100%);
+}
+
+.stat-card--tomorrow {
+  border: 1px solid #d1fae5;
+  background: linear-gradient(180deg, #f0fdf4 0%, #ecfdf5 100%);
 }
 
 .stat-label {
@@ -1181,6 +1240,46 @@ select:disabled {
   cursor: not-allowed;
 }
 
+.danger-zone {
+  margin-top: 36px;
+  border: 1px solid #fecaca;
+  border-radius: 12px;
+  padding: 20px 24px;
+  background: #fff5f5;
+}
+
+.danger-zone h2 {
+  margin: 0 0 6px;
+  color: #991b1b;
+  font-size: 1rem;
+}
+
+.danger-zone p {
+  color: #6b7280;
+  font-size: 0.9rem;
+  margin: 0 0 14px;
+}
+
+.btn-delete {
+  background: #ef4444;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 20px;
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.btn-delete:hover {
+  background: #dc2626;
+}
+
+.btn-delete:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 @media (max-width: 768px) {
   .detail-box {
     padding: 22px;
@@ -1189,6 +1288,11 @@ select:disabled {
   .stats-grid,
   .form {
     grid-template-columns: 1fr;
+  }
+
+  .stat-card--tomorrow,
+  .stat-card--highlight {
+    border-top: none;
   }
 
   .timeline-chart-row {

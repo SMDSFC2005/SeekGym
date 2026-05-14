@@ -8,7 +8,6 @@ import {
   createGymAnnouncementService,
   getProvincesService,
   getMunicipalitiesService,
-  getPostalCodesService,
 } from '../services/gymsService'
 
 export const useGymsStore = defineStore('gyms', {
@@ -31,12 +30,11 @@ export const useGymsStore = defineStore('gyms', {
 
     provinces: [],
     municipalities: [],
-    postalCodes: [],
 
     currentFilters: {
       province_id: '',
       municipality_id: '',
-      postal_code: '',
+      search: '',
     },
   }),
 
@@ -48,7 +46,7 @@ export const useGymsStore = defineStore('gyms', {
       const finalFilters = {
         province_id: filters.province_id ?? this.currentFilters.province_id,
         municipality_id: filters.municipality_id ?? this.currentFilters.municipality_id,
-        postal_code: filters.postal_code ?? this.currentFilters.postal_code,
+        search: filters.search ?? this.currentFilters.search,
       }
 
       const response = await getHomeGymsService(finalFilters)
@@ -186,29 +184,8 @@ export const useGymsStore = defineStore('gyms', {
       return { isOk: false, data: response?.data || null }
     },
 
-    async fetchPostalCodes(filters = {}) {
-      if (!filters.province_id) {
-        this.postalCodes = []
-        return { isOk: true, data: [] }
-      }
-
-      const response = await getPostalCodesService(filters)
-
-      if (response?.status === 200) {
-        this.postalCodes = response.data || []
-        return { isOk: true, data: response.data }
-      }
-
-      this.postalCodes = []
-      return { isOk: false, data: response?.data || null }
-    },
-
     resetMunicipalities() {
       this.municipalities = []
-    },
-
-    resetPostalCodes() {
-      this.postalCodes = []
     },
   },
 })

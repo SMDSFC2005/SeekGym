@@ -1,4 +1,4 @@
-from datetime import date as date_type
+from datetime import date as date_type, timedelta, datetime as datetime_type
 
 import holidays as holidays_lib
 from django.utils import timezone
@@ -24,20 +24,42 @@ CONFIDENCE_WEIGHT = 0.10
 
 _SPAIN_HOLIDAYS = holidays_lib.Spain(years=range(2024, 2029))
 
+# Días especiales que NO son festivos nacionales pero reducen claramente la afluencia.
+# Jueves Santo, Viernes Santo, Navidad y Año Nuevo ya los cubre holidays.Spain.
 SPECIAL_DAYS = {
+    # 2025 — Carnaval
+    (2025, 3, 3):  "Lunes de Carnaval",
+    (2025, 3, 4):  "Martes de Carnaval",
+    # 2025 — Semana Santa (festivos JU/VI ya en holidays.Spain)
     (2025, 4, 13): "Domingo de Ramos",
-    (2025, 4, 17): "Jueves Santo",
-    (2025, 4, 18): "Viernes Santo",
+    (2025, 4, 15): "Martes Santo",
+    (2025, 4, 16): "Miércoles Santo",
+    (2025, 4, 19): "Sábado Santo",
     (2025, 4, 20): "Domingo de Resurrección",
+    # 2025 — puentes / días de baja afluencia
+    (2025, 12, 26): "Día después de Navidad",
+    # 2026 — Carnaval
+    (2026, 2, 16): "Lunes de Carnaval",
+    (2026, 2, 17): "Martes de Carnaval",
+    # 2026 — Semana Santa
+    (2026, 3, 29): "Domingo de Ramos",
+    (2026, 3, 31): "Martes Santo",
+    (2026, 4, 1):  "Miércoles Santo",
+    (2026, 4, 4):  "Sábado Santo",
+    (2026, 4, 5):  "Domingo de Resurrección",
+    # 2026 — puentes
+    (2026, 12, 26): "Día después de Navidad",
+}
+
+# Días con patrón partido: mañana más lleno de lo normal (la gente va antes
+# de la comida/cena familiar), tarde/noche prácticamente vacío.
+SPLIT_DAYS = {
     (2025, 12, 24): "Nochebuena",
-    (2025, 12, 25): "Navidad",
     (2025, 12, 31): "Nochevieja",
-    (2026, 1, 1): "Año Nuevo",
-    (2026, 4, 2): "Jueves Santo",
-    (2026, 4, 3): "Viernes Santo",
+    (2026, 1, 5):   "Víspera de Reyes",
     (2026, 12, 24): "Nochebuena",
-    (2026, 12, 25): "Navidad",
     (2026, 12, 31): "Nochevieja",
+    (2027, 1, 5):   "Víspera de Reyes",
 }
 
 MONTHLY_OCCUPANCY_ADJUSTMENT = {
@@ -67,6 +89,24 @@ def is_special_day(d: date_type) -> bool:
     return (d.year, d.month, d.day) in SPECIAL_DAYS
 
 
+def is_split_day(d: date_type) -> bool:
+    return (d.year, d.month, d.day) in SPLIT_DAYS
+
+
+def get_split_day_hour_adjustment(hour: int, d: date_type) -> int:
+    """
+    Dec 24, Dec 31, Jan 5: la gente va por la mañana antes de la comida familiar.
+    A partir de las 15h el gym se queda casi vacío.
+    """
+    if not is_split_day(d):
+        return 0
+    if hour <= 12:
+        return 15   # mañana: más gente de lo normal
+    if hour >= 15:
+        return -30  # tarde/noche: casi nadie
+    return 0
+
+
 # ---------------------------------------------------------------------------
 # Núcleo de contexto
 # ---------------------------------------------------------------------------
@@ -79,15 +119,20 @@ def get_context(now=None) -> dict:
     local_now = get_local_now(now)
     today = local_now.date()
     actual_weekday = local_now.weekday()
+    key = (today.year, today.month, today.day)
 
     holiday = is_holiday(today)
     special = is_special_day(today)
+    split = is_split_day(today)
 
-    # Para los perfiles de ocupación usamos patrones de domingo en festivos
-    effective_day = 6 if (holiday or special) else actual_weekday
+    # Split days mantienen patrones de entre semana (mañana activa).
+    # Días especiales normales y festivos usan patrones de domingo.
+    effective_day = actual_weekday if split else (6 if (holiday or special) else actual_weekday)
 
     adjustment = MONTHLY_OCCUPANCY_ADJUSTMENT.get(today.month, 0)
-    if special:
+    if split:
+        adjustment -= 10  # ajuste plano moderado; el reparto mañana/tarde lo gestiona get_split_day_hour_adjustment
+    elif special:
         adjustment -= 20
     elif holiday:
         adjustment -= 10
@@ -98,8 +143,8 @@ def get_context(now=None) -> dict:
         "actual_weekday": actual_weekday,
         "effective_day": effective_day,
         "is_holiday": holiday,
-        "is_special_day": special,
-        "special_day_name": SPECIAL_DAYS.get((today.year, today.month, today.day)),
+        "is_special_day": special or split,
+        "special_day_name": SPLIT_DAYS.get(key) or SPECIAL_DAYS.get(key),
         "occupancy_adjustment": adjustment,
     }
 
@@ -185,7 +230,11 @@ def get_current_occupancy_data(gym, now=None):
         return {"current_occupancy": None, "current_status": None, "confidence": None}
 
     closing = schedule.closing_hour if schedule else None
-    total_adj = ctx["occupancy_adjustment"] + _closing_proximity_adjustment(ctx["hour"], closing)
+    total_adj = (
+        ctx["occupancy_adjustment"]
+        + _closing_proximity_adjustment(ctx["hour"], closing)
+        + get_split_day_hour_adjustment(ctx["hour"], ctx["date"])
+    )
     adjusted = _apply_adjustment(profile.occupancy_percent, total_adj)
     return {
         "current_occupancy": adjusted,
@@ -198,12 +247,16 @@ def get_current_occupancy_data(gym, now=None):
 # Scoring
 # ---------------------------------------------------------------------------
 
-def calculate_score(profile, current_hour, occupancy_adjustment=0, closing_hour=None):
+def calculate_score(profile, current_hour, occupancy_adjustment=0, closing_hour=None, date=None):
     hours_ahead = profile.hour - current_hour
     if hours_ahead <= 0:
         return None
 
-    total_adj = occupancy_adjustment + _closing_proximity_adjustment(profile.hour, closing_hour)
+    total_adj = (
+        occupancy_adjustment
+        + _closing_proximity_adjustment(profile.hour, closing_hour)
+        + (get_split_day_hour_adjustment(profile.hour, date) if date else 0)
+    )
     adjusted_occupancy = _apply_adjustment(profile.occupancy_percent, total_adj)
     occupancy_score = 1 - (adjusted_occupancy / 100)
     proximity_score = 1 / hours_ahead
@@ -304,7 +357,7 @@ def get_best_time_today(gym, now=None):
     candidate_profiles = window_profiles if window_profiles else future_profiles
 
     scored_profiles = [
-        (p, calculate_score(p, current_hour, ctx["occupancy_adjustment"], closing))
+        (p, calculate_score(p, current_hour, ctx["occupancy_adjustment"], closing, ctx["date"]))
         for p in candidate_profiles
     ]
     scored_profiles = [(p, s) for p, s in scored_profiles if s is not None]
@@ -313,7 +366,11 @@ def get_best_time_today(gym, now=None):
         return None
 
     def _status_priority(occupancy_percent, hour):
-        total_adj = ctx["occupancy_adjustment"] + _closing_proximity_adjustment(hour, closing)
+        total_adj = (
+            ctx["occupancy_adjustment"]
+            + _closing_proximity_adjustment(hour, closing)
+            + get_split_day_hour_adjustment(hour, ctx["date"])
+        )
         adjusted = _apply_adjustment(occupancy_percent, total_adj)
         if adjusted < 40:
             return 2  # GOOD
@@ -332,7 +389,11 @@ def get_best_time_today(gym, now=None):
         ),
     )
 
-    total_adj_best = ctx["occupancy_adjustment"] + _closing_proximity_adjustment(best_profile.hour, closing)
+    total_adj_best = (
+        ctx["occupancy_adjustment"]
+        + _closing_proximity_adjustment(best_profile.hour, closing)
+        + get_split_day_hour_adjustment(best_profile.hour, ctx["date"])
+    )
     adjusted_best = _apply_adjustment(best_profile.occupancy_percent, total_adj_best)
     if adjusted_best >= 70:
         return None
@@ -352,12 +413,114 @@ def get_best_time_today(gym, now=None):
 
 
 # ---------------------------------------------------------------------------
+# Mejor hora mañana
+# ---------------------------------------------------------------------------
+
+def get_best_time_tomorrow(gym, now=None):
+    local_now = get_local_now(now)
+    tomorrow = local_now.date() + timedelta(days=1)
+
+    tomorrow_midnight = timezone.make_aware(
+        datetime_type.combine(tomorrow, datetime_type.min.time())
+    )
+    ctx = get_context(tomorrow_midnight)
+
+    schedule = get_gym_schedule(gym, ctx)
+    if schedule and schedule.is_closed:
+        return None
+
+    opening = schedule.opening_hour if schedule else 0
+    closing = schedule.closing_hour if schedule else 24
+
+    all_profiles = list(
+        GymOccupancyProfile.objects.filter(
+            gym=gym,
+            day_of_week=ctx["effective_day"],
+            zone=GymOccupancyProfile.Zone.GENERAL,
+        ).order_by("hour")
+    )
+
+    if not all_profiles:
+        return None
+
+    valid_profiles = [p for p in all_profiles if opening <= p.hour < closing]
+    if not valid_profiles:
+        return None
+
+    latest_recommendable = closing - MIN_TRAINING_HOURS
+
+    candidate_profiles = [p for p in valid_profiles if p.hour <= latest_recommendable]
+    if not candidate_profiles:
+        return None
+
+    # current_hour=-1 → todos los perfiles son "futuros"; horas_ahead = p.hour + 1
+    scored_profiles = [
+        (p, calculate_score(p, -1, ctx["occupancy_adjustment"], closing, ctx["date"]))
+        for p in candidate_profiles
+    ]
+    scored_profiles = [(p, s) for p, s in scored_profiles if s is not None]
+
+    if not scored_profiles:
+        return None
+
+    def _status_priority(occupancy_percent, hour):
+        total_adj = (
+            ctx["occupancy_adjustment"]
+            + _closing_proximity_adjustment(hour, closing)
+            + get_split_day_hour_adjustment(hour, ctx["date"])
+        )
+        adjusted = _apply_adjustment(occupancy_percent, total_adj)
+        if adjusted < 40:
+            return 2
+        if adjusted < 70:
+            return 1
+        return 0
+
+    best_profile, best_score = max(
+        scored_profiles,
+        key=lambda item: (
+            _status_priority(item[0].occupancy_percent, item[0].hour),
+            item[1],
+            -item[0].occupancy_percent,
+            item[0].confidence,
+            -item[0].hour,
+        ),
+    )
+
+    total_adj_best = (
+        ctx["occupancy_adjustment"]
+        + _closing_proximity_adjustment(best_profile.hour, closing)
+        + get_split_day_hour_adjustment(best_profile.hour, ctx["date"])
+    )
+    adjusted_best = _apply_adjustment(best_profile.occupancy_percent, total_adj_best)
+    if adjusted_best >= 70:
+        return None
+
+    end_hour = (best_profile.hour + 1) % 24
+
+    return {
+        "hour": best_profile.hour,
+        "label": f"{best_profile.hour:02d}:00 - {end_hour:02d}:00",
+        "occupancy_percent": adjusted_best,
+        "confidence": best_profile.confidence,
+        "score": best_score,
+        "reason": build_recommendation_reason(
+            best_profile, -1, latest_recommendable, ctx
+        ),
+    }
+
+
+# ---------------------------------------------------------------------------
 # Timeline
 # ---------------------------------------------------------------------------
 
-def build_timeline_hour(hour, profile=None, occupancy_adjustment=0, closing_hour=None):
+def build_timeline_hour(hour, profile=None, occupancy_adjustment=0, closing_hour=None, date=None):
     if profile:
-        total_adj = occupancy_adjustment + _closing_proximity_adjustment(hour, closing_hour)
+        total_adj = (
+            occupancy_adjustment
+            + _closing_proximity_adjustment(hour, closing_hour)
+            + (get_split_day_hour_adjustment(hour, date) if date else 0)
+        )
         occupancy = _apply_adjustment(profile.occupancy_percent, total_adj)
         confidence = profile.confidence
     else:
@@ -395,7 +558,7 @@ def get_today_timeline(gym, now=None):
             result.append(build_timeline_hour(hour))
         else:
             result.append(
-                build_timeline_hour(hour, profiles_by_hour.get(hour), ctx["occupancy_adjustment"], closing)
+                build_timeline_hour(hour, profiles_by_hour.get(hour), ctx["occupancy_adjustment"], closing, ctx["date"])
             )
 
     return result

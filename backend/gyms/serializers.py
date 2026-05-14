@@ -4,6 +4,7 @@ from rest_framework import serializers
 from gyms.models import Gym, GymAnnouncement, GymFollower, GymSchedule, Municipality, Province
 from gyms.services.occupancy import (
     get_best_time_today,
+    get_best_time_tomorrow,
     get_current_occupancy_data,
     get_today_timeline,
 )
@@ -178,6 +179,7 @@ class GymHomeSerializer(GymBaseReadSerializer):
 
 class GymDetailSerializer(GymBaseReadSerializer):
     today_timeline = serializers.SerializerMethodField()
+    best_time_tomorrow = serializers.SerializerMethodField()
     announcements = serializers.SerializerMethodField()
     schedule = serializers.SerializerMethodField()
     owner_id = serializers.IntegerField(read_only=True)
@@ -185,6 +187,7 @@ class GymDetailSerializer(GymBaseReadSerializer):
     class Meta(GymBaseReadSerializer.Meta):
         fields = GymBaseReadSerializer.Meta.fields + (
             "today_timeline",
+            "best_time_tomorrow",
             "announcements",
             "schedule",
             "owner_id",
@@ -192,6 +195,11 @@ class GymDetailSerializer(GymBaseReadSerializer):
 
     def get_today_timeline(self, obj):
         return get_today_timeline(obj)
+
+    def get_best_time_tomorrow(self, obj):
+        if not hasattr(obj, "_cached_best_time_tomorrow"):
+            obj._cached_best_time_tomorrow = get_best_time_tomorrow(obj)
+        return obj._cached_best_time_tomorrow
 
     def get_announcements(self, obj):
         announcements = obj.announcements.filter(is_active=True).order_by("-created_at")
