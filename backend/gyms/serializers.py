@@ -10,12 +10,14 @@ from gyms.services.occupancy import (
 )
 
 
+# genera un slug único para el gym, añadiendo -2, -3... si ya existe uno igual
 def build_unique_slug(model_class, value, instance_id=None):
     base_slug = slugify(value)
     slug = base_slug
     counter = 2
 
     queryset = model_class.objects.all()
+    # si estamos editando, excluimos el propio objeto para que no colisione consigo mismo
     if instance_id:
         queryset = queryset.exclude(id=instance_id)
 
@@ -107,6 +109,7 @@ class GymBaseReadSerializer(serializers.ModelSerializer):
     confidence = serializers.SerializerMethodField()
     best_time_today = serializers.SerializerMethodField()
     is_following = serializers.SerializerMethodField()
+    image_url = serializers.SerializerMethodField()
 
     class Meta:
         model = Gym
@@ -132,11 +135,13 @@ class GymBaseReadSerializer(serializers.ModelSerializer):
             "is_following",
         )
 
+    # cacheamos el resultado para no calcular la ocupación dos veces por request
     def _get_current_data(self, obj):
         if not hasattr(obj, "_cached_current_data"):
             obj._cached_current_data = get_current_occupancy_data(obj)
         return obj._cached_current_data
 
+    # igual para el mejor horario de hoy, cacheado en el objeto
     def _get_best_time_data(self, obj):
         if not hasattr(obj, "_cached_best_time_data"):
             obj._cached_best_time_data = get_best_time_today(obj)
@@ -166,6 +171,16 @@ class GymBaseReadSerializer(serializers.ModelSerializer):
     def get_best_time_today(self, obj):
         return self._get_best_time_data(obj)
 
+    # devuelve la URL absoluta de la imagen, o None si no tiene
+    def get_image_url(self, obj):
+        if not obj.image:
+            return None
+        request = self.context.get("request")
+        if request:
+            return request.build_absolute_uri(obj.image.url)
+        return obj.image.url
+
+    # comprueba si el usuario logueado sigue este gym
     def get_is_following(self, obj):
         request = self.context.get("request")
         if not request or not request.user.is_authenticated:
@@ -193,18 +208,22 @@ class GymDetailSerializer(GymBaseReadSerializer):
             "owner_id",
         )
 
+    # timeline de ocupación hora a hora para hoy
     def get_today_timeline(self, obj):
         return get_today_timeline(obj)
 
+    # mejor hora para mañana, cacheado igual que el de hoy
     def get_best_time_tomorrow(self, obj):
         if not hasattr(obj, "_cached_best_time_tomorrow"):
             obj._cached_best_time_tomorrow = get_best_time_tomorrow(obj)
         return obj._cached_best_time_tomorrow
 
+    # solo los anuncios activos, del más nuevo al más viejo
     def get_announcements(self, obj):
         announcements = obj.announcements.filter(is_active=True).order_by("-created_at")
         return GymAnnouncementSerializer(announcements, many=True).data
 
+    # devuelve el horario ordenado de lunes a domingo más festivos
     def get_schedule(self, obj):
         DAY_ORDER = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN", "HOL"]
         schedules = {s.day_type: s for s in obj.schedules.all()}
@@ -239,10 +258,10 @@ class GymCreateUpdateSerializer(serializers.ModelSerializer):
             "address",
             "description",
             "price_per_month",
-            "image_url",
             "schedule",
         )
 
+    # comprobamos que el municipio pertenece a la provincia seleccionada
     def validate(self, attrs):
         province = attrs.get("province") or getattr(self.instance, "province", None)
         municipality = attrs.get("municipality") or getattr(self.instance, "municipality", None)
@@ -260,6 +279,7 @@ class GymCreateUpdateSerializer(serializers.ModelSerializer):
 
         return attrs
 
+    # guarda o actualiza cada día del horario con update_or_create para no duplicar
     def _save_schedule(self, gym, schedule_data):
         for entry in schedule_data:
             GymSchedule.objects.update_or_create(
@@ -275,6 +295,7 @@ class GymCreateUpdateSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         schedule_data = validated_data.pop("schedule", [])
         request = self.context["request"]
+        # el dueño del gym es el usuario que hace la petición
         validated_data["owner"] = request.user
         validated_data["slug"] = build_unique_slug(Gym, validated_data["name"])
         gym = super().create(validated_data)
@@ -283,6 +304,7 @@ class GymCreateUpdateSerializer(serializers.ModelSerializer):
 
     def update(self, instance, validated_data):
         schedule_data = validated_data.pop("schedule", None)
+        # si cambia el nombre regeneramos el slug para que siga siendo único
         if "name" in validated_data and validated_data["name"] != instance.name:
             instance.slug = build_unique_slug(Gym, validated_data["name"], instance_id=instance.id)
         gym = super().update(instance, validated_data)

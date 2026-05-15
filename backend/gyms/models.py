@@ -4,6 +4,7 @@ from django.utils import timezone
 from django.core.validators import MinValueValidator, MaxValueValidator
 
 
+# modelo para las provincias de España
 class Province(models.Model):
     name = models.CharField(max_length=100, unique=True)
     slug = models.SlugField(unique=True)
@@ -15,6 +16,7 @@ class Province(models.Model):
         return self.name
 
 
+# municipios vinculados a una provincia
 class Municipality(models.Model):
     province = models.ForeignKey(
         Province,
@@ -32,7 +34,9 @@ class Municipality(models.Model):
         return f"{self.name} ({self.province.name})"
 
 
+# el modelo principal del gym, con toda la info
 class Gym(models.Model):
+    # si el dueño se borra, el gym se queda sin dueño (SET_NULL) pero no desaparece
     owner = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -64,6 +68,7 @@ class Gym(models.Model):
 
     price_per_month = models.DecimalField(max_digits=6, decimal_places=2)
 
+    # rating entre 0 y 5, empieza en 0
     rating = models.DecimalField(
         max_digits=3,
         decimal_places=2,
@@ -72,7 +77,7 @@ class Gym(models.Model):
     )
     reviews_count = models.PositiveIntegerField(default=0)
 
-    image_url = models.URLField(blank=True)
+    image = models.ImageField(upload_to='gyms/', blank=True, null=True)
     is_active = models.BooleanField(default=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
@@ -85,6 +90,7 @@ class Gym(models.Model):
         return self.name
 
 
+# anuncios que puede publicar el dueño del gym (promos, ofertas, novedades)
 class GymAnnouncement(models.Model):
     class Kind(models.TextChoices):
         PROMOCION = "PROMOCION", "Promoción"
@@ -114,6 +120,7 @@ class GymAnnouncement(models.Model):
         return f"{self.gym.name} - {self.kind} - {self.title}"
 
 
+# horario del gym por día de la semana, incluyendo festivos
 class GymSchedule(models.Model):
     class DayType(models.TextChoices):
         MON = "MON", "Lunes"
@@ -146,6 +153,7 @@ class GymSchedule(models.Model):
         return f"{self.gym.name} - {self.day_type}: {self.opening_hour:02d}:00–{self.closing_hour:02d}:00"
 
 
+# perfil de ocupación por hora y día, esto es lo que alimenta las recomendaciones
 class GymOccupancyProfile(models.Model):
     class DayOfWeek(models.IntegerChoices):
         MONDAY = 0, "Monday"
@@ -173,9 +181,11 @@ class GymOccupancyProfile(models.Model):
         choices=Zone.choices,
         default=Zone.GENERAL
     )
+    # porcentaje de ocupación estimado para esa franja
     occupancy_percent = models.IntegerField(
         validators=[MinValueValidator(0), MaxValueValidator(100)]
     )
+    # qué tan fiable es ese dato, de 0 a 100
     confidence = models.IntegerField(
         default=70,
         validators=[MinValueValidator(0), MaxValueValidator(100)]
@@ -191,6 +201,7 @@ class GymOccupancyProfile(models.Model):
         return f"{self.gym.name} - {self.day_of_week} - {self.hour}:00"
 
 
+# relación entre usuario y gym que sigue, para notificaciones
 class GymFollower(models.Model):
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -199,6 +210,7 @@ class GymFollower(models.Model):
     )
     gym = models.ForeignKey(Gym, on_delete=models.CASCADE, related_name="followers")
     created_at = models.DateTimeField(auto_now_add=True)
+    # cuando el usuario leyó los anuncios por última vez
     last_read_at = models.DateTimeField(default=timezone.now)
 
     class Meta:

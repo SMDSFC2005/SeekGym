@@ -50,9 +50,24 @@
           <input v-model="form.price_per_month" type="number" step="0.01" min="0" required />
         </div>
 
-        <div class="field">
-          <label>Imagen (URL)</label>
-          <input v-model="form.image_url" type="url" />
+        <!-- Imagen -->
+        <div class="field field--full">
+          <label>Imagen del gimnasio</label>
+          <div class="image-upload-area" @click="fileInput.click()">
+            <img v-if="imagePreview" :src="imagePreview" class="image-preview" alt="Preview" />
+            <div v-else class="image-placeholder">
+              <span class="image-placeholder-icon">🖼</span>
+              <span>Haz clic para seleccionar una imagen</span>
+            </div>
+          </div>
+          <input
+            ref="fileInput"
+            type="file"
+            accept="image/*"
+            class="file-input-hidden"
+            @change="onImageSelect"
+          />
+          <p v-if="imageFile" class="image-filename">{{ imageFile.name }}</p>
         </div>
 
         <div class="field field--full">
@@ -107,23 +122,27 @@
 </template>
 
 <script setup>
-import { onMounted, reactive } from 'vue'
+import { onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { useGymsStore } from '../store/gymStore'
+import { uploadGymImageService } from '../services/gymsService'
 
 const router = useRouter()
 const gymsStore = useGymsStore()
 
 const { provinces, municipalities, saveLoading, saveError } = storeToRefs(gymsStore)
 
+// listas de horas para los selectores de apertura y cierre
 const hours = Array.from({ length: 24 }, (_, i) => i)
 const closingHours = Array.from({ length: 24 }, (_, i) => i + 1)
 
+// formatea horas con cero delante: 7 → "07"
 function pad(h) {
   return String(h).padStart(2, '0')
 }
 
+// horario predefinido razonable para un gym español
 const DEFAULT_SCHEDULE = [
   { day_type: 'MON', label: 'Lunes',     opening_hour: 7,  closing_hour: 22, is_closed: false },
   { day_type: 'TUE', label: 'Martes',    opening_hour: 7,  closing_hour: 22, is_closed: false },
@@ -135,6 +154,7 @@ const DEFAULT_SCHEDULE = [
   { day_type: 'HOL', label: 'Festivos',  opening_hour: 10, closing_hour: 14, is_closed: false },
 ]
 
+// datos del formulario de creación del gym
 const form = reactive({
   name: '',
   province_id: '',
@@ -143,10 +163,22 @@ const form = reactive({
   address: '',
   description: '',
   price_per_month: '',
-  image_url: '',
   schedule: DEFAULT_SCHEDULE.map((r) => ({ ...r })),
 })
 
+const fileInput = ref(null)
+const imageFile = ref(null)
+const imagePreview = ref(null)
+
+// cuando el usuario selecciona una imagen generamos una preview local
+function onImageSelect(e) {
+  const file = e.target.files[0]
+  if (!file) return
+  imageFile.value = file
+  imagePreview.value = URL.createObjectURL(file)
+}
+
+// al cambiar de provincia reseteamos el municipio y cargamos los nuevos
 async function onProvinceChange() {
   form.municipality_id = ''
   gymsStore.resetMunicipalities()
@@ -155,6 +187,7 @@ async function onProvinceChange() {
   }
 }
 
+// envía el formulario, crea el gym y sube la imagen si hay una seleccionada
 async function onSubmit() {
   const result = await gymsStore.createGym({
     name: form.name,
@@ -164,7 +197,7 @@ async function onSubmit() {
     address: form.address,
     description: form.description,
     price_per_month: form.price_per_month,
-    image_url: form.image_url,
+    // quitamos las etiquetas, el backend solo necesita estos campos
     schedule: form.schedule.map(({ day_type, opening_hour, closing_hour, is_closed }) => ({
       day_type,
       opening_hour,
@@ -174,10 +207,15 @@ async function onSubmit() {
   })
 
   if (result.isOk) {
+    // si hay imagen la subimos justo después de crear el gym
+    if (imageFile.value) {
+      await uploadGymImageService(result.data.slug, imageFile.value)
+    }
     router.push(`/gyms/${result.data.slug}`)
   }
 }
 
+// cargamos las provincias al montar para tener el selector listo
 onMounted(async () => {
   await gymsStore.fetchProvinces()
 })
@@ -234,6 +272,52 @@ onMounted(async () => {
 
 .field--full {
   grid-column: 1 / -1;
+}
+
+.image-upload-area {
+  width: 100%;
+  height: 200px;
+  border: 2px dashed #d1d5db;
+  border-radius: 12px;
+  overflow: hidden;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 0.15s;
+}
+
+.image-upload-area:hover {
+  border-color: #9ca3af;
+}
+
+.image-preview {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.image-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  color: #9ca3af;
+  font-size: 0.9rem;
+}
+
+.image-placeholder-icon {
+  font-size: 2rem;
+}
+
+.file-input-hidden {
+  display: none;
+}
+
+.image-filename {
+  color: #6b7280;
+  font-size: 0.85rem;
+  margin: 0;
 }
 
 .section-label {

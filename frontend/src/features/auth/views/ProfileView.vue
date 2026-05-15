@@ -4,7 +4,21 @@
       <button class="back-btn" @click="router.push('/home')">← Volver</button>
 
       <div class="profile-header">
-        <div class="avatar">{{ avatarLetter }}</div>
+        <div class="avatar-wrapper" @click="photoInput.click()">
+          <img v-if="photoUrl" :src="photoUrl" class="avatar-img" alt="Foto de perfil" />
+          <div v-else class="avatar">{{ avatarLetter }}</div>
+          <div class="avatar-overlay">
+            {{ uploading ? '...' : 'Cambiar' }}
+          </div>
+          <input
+            ref="photoInput"
+            type="file"
+            accept="image/*"
+            class="file-input-hidden"
+            @change="onPhotoChange"
+          />
+        </div>
+
         <div class="profile-title">
           <h2>{{ user.username }}</h2>
           <span v-if="roleLabel" :class="['role-badge', roleBadgeClass]">
@@ -34,28 +48,58 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '../store/userStore'
+import { useToastStore } from '@/stores/toastStore'
+import { uploadProfilePhotoService } from '../services/authService'
 
 const router = useRouter()
 const userStore = useUserStore()
+const toastStore = useToastStore()
 const user = userStore.user
 
+const photoInput = ref(null)
+const uploading = ref(false)
+// pillamos la foto actual del usuario si tiene, si no null
+const photoUrl = ref(user?.profile_photo_url || null)
+
+// cuando el usuario selecciona una imagen nueva la subimos al backend
+async function onPhotoChange(e) {
+  const file = e.target.files[0]
+  if (!file) return
+  uploading.value = true
+  const res = await uploadProfilePhotoService(file)
+  uploading.value = false
+  // limpiamos el input para que se pueda volver a seleccionar la misma foto
+  photoInput.value.value = ''
+  if (res?.status === 200) {
+    photoUrl.value = res.data.profile_photo_url
+    userStore.user.profile_photo_url = res.data.profile_photo_url
+    toastStore.show('Foto actualizada correctamente')
+  } else {
+    toastStore.show('Error al subir la foto', 'error')
+  }
+}
+
+// la inicial del usuario para el avatar de fallback
 const avatarLetter = computed(() => user?.username?.[0]?.toUpperCase() ?? '?')
 
+// texto del badge de rol: Admin, Gym o nada
 const roleLabel = computed(() => {
   if (user?.is_superuser) return 'Admin'
   if (user?.rol === 'GIMNASIO') return 'Gym'
   return null
 })
 
+// clase CSS del badge según el rol
 const roleBadgeClass = computed(() => {
   if (user?.is_superuser) return 'role-badge--admin'
   if (user?.rol === 'GIMNASIO') return 'role-badge--gym'
   return ''
 })
 
+// texto legible del estado de solicitud de gym
 const estadoLabel = computed(() => {
   const map = {
     PENDIENTE: 'Pendiente de aprobación',
@@ -66,6 +110,7 @@ const estadoLabel = computed(() => {
   return map[user?.estado_gym] ?? '-'
 })
 
+// clase CSS del badge del estado para poner el color adecuado
 const estadoBadgeClass = computed(() => {
   const map = {
     PENDIENTE: 'estado--pendiente',
@@ -117,9 +162,30 @@ const estadoBadgeClass = computed(() => {
   margin-bottom: 32px;
 }
 
+.avatar-wrapper {
+  position: relative;
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.avatar-wrapper:hover .avatar-overlay {
+  opacity: 1;
+}
+
+.avatar-img {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  object-fit: cover;
+  display: block;
+}
+
 .avatar {
-  width: 64px;
-  height: 64px;
+  width: 72px;
+  height: 72px;
   border-radius: 50%;
   background: #111827;
   color: white;
@@ -128,7 +194,25 @@ const estadoBadgeClass = computed(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  flex-shrink: 0;
+}
+
+.avatar-overlay {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.5);
+  color: white;
+  font-size: 0.72rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.file-input-hidden {
+  display: none;
 }
 
 .profile-title {

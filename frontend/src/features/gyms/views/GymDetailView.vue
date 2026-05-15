@@ -31,12 +31,25 @@
           </button>
         </div>
 
-        <img
-          v-if="gymDetail.image_url"
-          :src="gymDetail.image_url"
-          :alt="gymDetail.name"
-          class="cover-image"
-        />
+        <div class="cover-wrapper">
+          <img
+            v-if="gymDetail.image_url"
+            :src="gymDetail.image_url"
+            :alt="gymDetail.name"
+            class="cover-image"
+          />
+          <div v-else-if="canEdit" class="cover-placeholder">Sin imagen</div>
+          <div v-if="canEdit" class="cover-change-btn" @click="coverInput.click()">
+            {{ imageUploading ? 'Subiendo...' : 'Cambiar imagen' }}
+          </div>
+          <input
+            ref="coverInput"
+            type="file"
+            accept="image/*"
+            class="file-input-hidden"
+            @change="onCoverChange"
+          />
+        </div>
 
         <p v-if="gymDetail.description" class="description">
           {{ gymDetail.description }}
@@ -262,7 +275,7 @@
 
         <template v-if="canEdit">
           <div class="manage-section">
-            <h2>Editar mi gimnasio</h2>
+            <h2>Mi gimnasio</h2>
 
             <p v-if="saveError" class="error">{{ saveError }}</p>
 
@@ -305,11 +318,6 @@
               <div class="field">
                 <label>Precio mensual</label>
                 <input v-model="editForm.price_per_month" type="number" step="0.01" min="0" required />
-              </div>
-
-              <div class="field">
-                <label>Imagen (URL)</label>
-                <input v-model="editForm.image_url" type="url" />
               </div>
 
               <div class="field field--full">
@@ -409,9 +417,11 @@
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 
+// arrays de horas para los selectores del horario
 const hours = Array.from({ length: 24 }, (_, i) => i)
 const closingHours = Array.from({ length: 24 }, (_, i) => i + 1)
 
+// formatea una hora como "07", "22", etc.
 function pad(h) {
   return String(h).padStart(2, '0')
 }
@@ -423,6 +433,7 @@ const SCHEDULE_LABELS = {
 
 const DAY_ORDER = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN', 'HOL']
 
+// horario por defecto que usamos si el gym no tiene uno configurado
 const DEFAULT_SCHEDULE = [
   { day_type: 'MON', opening_hour: 7,  closing_hour: 22, is_closed: false },
   { day_type: 'TUE', opening_hour: 7,  closing_hour: 22, is_closed: false },
@@ -437,12 +448,14 @@ import { useRoute, useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { useGymsStore } from '../store/gymStore'
 import { useUserStore } from '../../auth/store/userStore'
-import { toggleFollowGymService, deleteGymService } from '../services/gymsService'
+import { useToastStore } from '@/stores/toastStore'
+import { toggleFollowGymService, deleteGymService, uploadGymImageService } from '../services/gymsService'
 
 const route = useRoute()
 const router = useRouter()
 const gymsStore = useGymsStore()
 const userStore = useUserStore()
+const toastStore = useToastStore()
 
 const {
   gymDetail,
@@ -457,6 +470,7 @@ const {
   announcementError,
 } = storeToRefs(gymsStore)
 
+// formulario de edición del gym, se rellena cuando carga gymDetail
 const editForm = reactive({
   name: '',
   province_id: '',
@@ -469,18 +483,22 @@ const editForm = reactive({
   schedule: DEFAULT_SCHEDULE.map((r) => ({ ...r, label: SCHEDULE_LABELS[r.day_type] })),
 })
 
+// formulario para crear un anuncio nuevo
 const announcementForm = reactive({
   kind: 'PROMOCION',
   title: '',
   content: '',
 })
 
+// hora actual del navegador para marcar la franja en el timeline
 const currentHour = computed(() => new Date().getHours())
 
+// hora recomendada para marcarla en el timeline
 const bestHour = computed(() => {
   return gymDetail.value?.best_time_today?.hour ?? null
 })
 
+// filtramos las horas sin dato y añadimos flags de estado para el timeline
 const timelineItems = computed(() => {
   const timeline = gymDetail.value?.today_timeline ?? []
 
@@ -494,11 +512,13 @@ const timelineItems = computed(() => {
     }))
 })
 
+// pillamos el día de la semana actual para resaltar la fila correspondiente en el horario
 const todayDayType = computed(() => {
   const map = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN']
   return map[new Date().getDay() === 0 ? 6 : new Date().getDay() - 1]
 })
 
+// prepara las filas del horario con la etiqueta del día y si es hoy
 const scheduleRows = computed(() => {
   const schedule = gymDetail.value?.schedule ?? []
   return schedule.map((row) => ({
@@ -508,6 +528,7 @@ const scheduleRows = computed(() => {
   }))
 })
 
+// el usuario puede editar si es el dueño del gym o superuser
 const canEdit = computed(() => {
   if (!userStore.user || !gymDetail.value) return false
   if (userStore.user.is_superuser && myGym.value?.slug === gymDetail.value.slug) return true
@@ -520,18 +541,41 @@ const canEdit = computed(() => {
 
 const followLoading = ref(false)
 const isFollowing = computed(() => gymDetail.value?.is_following ?? false)
+// los dueños del gym no pueden seguirlo, eso es para los demás usuarios
 const canFollow = computed(() => {
   if (!userStore.user || !gymDetail.value) return false
   return !canEdit.value
 })
 
 const deleteLoading = ref(false)
+
+const coverInput = ref(null)
+const imageUploading = ref(false)
+
+// sube la imagen de portada del gym cuando el dueño selecciona un archivo
+async function onCoverChange(e) {
+  const file = e.target.files[0]
+  if (!file) return
+  imageUploading.value = true
+  const res = await uploadGymImageService(route.params.slug, file)
+  imageUploading.value = false
+  coverInput.value.value = ''
+  if (res?.status === 200) {
+    gymDetail.value.image_url = res.data.image_url
+    toastStore.show('Imagen actualizada correctamente')
+  } else {
+    toastStore.show('Error al subir la imagen', 'error')
+  }
+}
+
+// el superuser puede borrar cualquier gym, el dueño solo el suyo
 const canDelete = computed(() => {
   if (!userStore.user || !gymDetail.value) return false
   if (userStore.user.is_superuser) return true
   return canEdit.value
 })
 
+// borra el gym con confirmación previa, y nos manda a home si todo va bien
 async function onDeleteGym() {
   if (!confirm(`¿Seguro que quieres eliminar "${gymDetail.value.name}"? Esta acción no se puede deshacer.`)) return
   deleteLoading.value = true
@@ -542,6 +586,7 @@ async function onDeleteGym() {
   deleteLoading.value = false
 }
 
+// toggle seguir/dejar de seguir, evitamos doble clic con followLoading
 async function toggleFollow() {
   if (followLoading.value) return
   followLoading.value = true
@@ -555,6 +600,7 @@ async function toggleFollow() {
   }
 }
 
+// convierte el estado de ocupación en texto para el usuario
 function getStatusLabel(status) {
   if (status === 'GOOD') return 'Buen momento'
   if (status === 'MEDIUM') return 'Con espera'
@@ -562,6 +608,7 @@ function getStatusLabel(status) {
   return 'Sin datos'
 }
 
+// calcula el estado a partir del porcentaje, igual que en el backend
 function getStatusFromOccupancy(occupancyPercent) {
   if (occupancyPercent === null || occupancyPercent === undefined) return null
   if (occupancyPercent < 40) return 'GOOD'
@@ -569,6 +616,7 @@ function getStatusFromOccupancy(occupancyPercent) {
   return 'AVOID'
 }
 
+// clase CSS para el pill de estado según si es bueno, medio o malo
 function getStatusClass(status) {
   if (status === 'GOOD') return 'status-pill--good'
   if (status === 'MEDIUM') return 'status-pill--medium'
@@ -576,6 +624,7 @@ function getStatusClass(status) {
   return ''
 }
 
+// clase CSS para la barra de progreso de ocupación
 function getOccupancyClass(occupancyPercent) {
   if (occupancyPercent === null || occupancyPercent === undefined) return 'bar-fill--empty'
   if (occupancyPercent < 40) return 'bar-fill--good'
@@ -583,10 +632,8 @@ function getOccupancyClass(occupancyPercent) {
   return 'bar-fill--avoid'
 }
 
-function formatScore(score) {
-  return Number(score).toFixed(3)
-}
 
+// rellena el formulario de edición con los datos actuales del gym
 function fillEditForm() {
   if (!gymDetail.value) return
 
@@ -597,8 +644,8 @@ function fillEditForm() {
   editForm.address = gymDetail.value.address || ''
   editForm.description = gymDetail.value.description || ''
   editForm.price_per_month = gymDetail.value.price_per_month || ''
-  editForm.image_url = gymDetail.value.image_url || ''
 
+  // montamos el horario combinando los datos de la API con el horario por defecto
   const apiSchedule = gymDetail.value.schedule ?? []
   const byDayType = Object.fromEntries(apiSchedule.map((s) => [s.day_type, s]))
   editForm.schedule = DAY_ORDER.map((d) => ({
@@ -610,6 +657,7 @@ function fillEditForm() {
   }))
 }
 
+// al cambiar provincia en el formulario de edición limpiamos y recargamos municipios
 async function onProvinceChange() {
   editForm.municipality_id = ''
   gymsStore.resetMunicipalities()
@@ -619,6 +667,7 @@ async function onProvinceChange() {
   }
 }
 
+// guarda los cambios del gym y vuelve a la home si todo va bien
 async function onSaveGym() {
   const result = await gymsStore.updateGym(route.params.slug, {
     name: editForm.name,
@@ -628,7 +677,7 @@ async function onSaveGym() {
     address: editForm.address,
     description: editForm.description,
     price_per_month: editForm.price_per_month,
-    image_url: editForm.image_url,
+    // solo mandamos los campos que necesita el backend, sin las etiquetas
     schedule: editForm.schedule.map(({ day_type, opening_hour, closing_hour, is_closed }) => ({
       day_type,
       opening_hour,
@@ -638,10 +687,14 @@ async function onSaveGym() {
   })
 
   if (result.isOk) {
-    fillEditForm()
+    toastStore.show('Cambios guardados correctamente')
+    router.push('/home')
+  } else {
+    toastStore.show('Error al guardar los cambios', 'error')
   }
 }
 
+// publica el anuncio y limpia el formulario si todo va bien
 async function onCreateAnnouncement() {
   const result = await gymsStore.createAnnouncement(route.params.slug, {
     kind: announcementForm.kind,
@@ -653,9 +706,13 @@ async function onCreateAnnouncement() {
     announcementForm.kind = 'PROMOCION'
     announcementForm.title = ''
     announcementForm.content = ''
+    toastStore.show('Publicación creada correctamente')
+  } else {
+    toastStore.show('Error al crear la publicación', 'error')
   }
 }
 
+// cuando carga el detalle del gym rellenamos el form y cargamos municipios si puede editar
 watch(gymDetail, async (value) => {
   if (!value) return
 
@@ -667,9 +724,11 @@ watch(gymDetail, async (value) => {
 })
 
 onMounted(async () => {
+  // cargamos el detalle del gym que viene en la URL
   await gymsStore.fetchGymDetail(route.params.slug)
   await gymsStore.fetchProvinces()
 
+  // solo cargamos myGym si el usuario puede gestionar gyms
   if (
     userStore.user?.is_superuser ||
     (userStore.user?.rol === 'GIMNASIO' && userStore.user?.estado_gym === 'APROBADO')
@@ -766,12 +825,50 @@ onMounted(async () => {
   margin-bottom: 20px;
 }
 
+.cover-wrapper {
+  position: relative;
+  width: 100%;
+  margin-bottom: 20px;
+}
+
 .cover-image {
   width: 100%;
-  max-height: 360px;
+  aspect-ratio: 16 / 6;
   object-fit: cover;
+  object-position: center;
   border-radius: 16px;
-  margin-bottom: 20px;
+  display: block;
+}
+
+.cover-placeholder {
+  width: 100%;
+  aspect-ratio: 16 / 6;
+  border-radius: 16px;
+  background: #e5e7eb;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #9ca3af;
+  font-size: 0.95rem;
+}
+
+.cover-change-btn {
+  position: absolute;
+  bottom: 12px;
+  right: 12px;
+  background: rgba(0, 0, 0, 0.65);
+  color: white;
+  padding: 7px 16px;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  backdrop-filter: blur(4px);
+  transition: background 0.15s;
+}
+
+.cover-change-btn:hover {
+  background: rgba(0, 0, 0, 0.85);
 }
 
 .description {
@@ -857,9 +954,10 @@ onMounted(async () => {
 
 .timeline-section h2,
 .manage-section h2 {
-  margin: 0 0 10px;
+  margin: 0;
   color: #111827;
 }
+
 
 .section-header {
   display: flex;
@@ -1239,6 +1337,7 @@ select:disabled {
   color: #9ca3af;
   cursor: not-allowed;
 }
+
 
 .danger-zone {
   margin-top: 36px;

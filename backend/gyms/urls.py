@@ -6,6 +6,7 @@ from gyms.views import (
     GymDetailView,
     GymFollowView,
     GymHomeView,
+    GymImageUploadView,
     GymUpdateView,
     FollowedGymsView,
     MunicipalityListView,
@@ -28,6 +29,7 @@ urlpatterns = [
 
     path("<slug:slug>/", GymDetailView.as_view(), name="gyms-detail"),
     path("<slug:slug>/manage/", GymUpdateView.as_view(), name="gyms-update"),
+    path("<slug:slug>/upload-image/", GymImageUploadView.as_view(), name="gym-upload-image"),
     path("<slug:slug>/follow/", GymFollowView.as_view(), name="gyms-follow"),
     path("<slug:slug>/announcements/", GymAnnouncementCreateView.as_view(), name="gyms-announcement-create"),
 ]

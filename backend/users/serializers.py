@@ -4,8 +4,10 @@ from rest_framework import serializers
 User = get_user_model()
 
 
+# serializer para el registro de nuevos usuarios
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=8)
+    # el rol se puede pedir pero siempre arranca como NORMAL hasta que el admin apruebe
     rol = serializers.ChoiceField(
         choices=[User.Rol.NORMAL, User.Rol.GIMNASIO],
         required=False,
@@ -28,6 +30,7 @@ class RegisterSerializer(serializers.ModelSerializer):
             email=validated_data.get("email", ""),
         )
 
+        # si piden ser gym, lo dejamos pendiente hasta que el admin diga que sí
         if requested_rol == User.Rol.GIMNASIO:
             user.rol = User.Rol.NORMAL
             user.estado_gym = User.EstadoGym.PENDIENTE

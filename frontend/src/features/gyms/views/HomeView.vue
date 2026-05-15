@@ -147,6 +147,7 @@ const userStore = useUserStore()
 const gymsStore = useGymsStore()
 const notificationsStore = useNotificationsStore()
 
+// controla si se ve el panel de notificaciones
 const showNotifPanel = ref(false)
 
 const {
@@ -159,6 +160,7 @@ const {
   myGym,
 } = storeToRefs(gymsStore)
 
+// filtros activos de provincia y municipio
 const filters = reactive({
   province_id: '',
   municipality_id: '',
@@ -167,6 +169,7 @@ const filters = reactive({
 const searchInput = ref('')
 let searchDebounce = null
 
+// buscamos al escribir con un debounce de 300ms para no spamear la API
 watch(searchInput, (value) => {
   clearTimeout(searchDebounce)
   searchDebounce = setTimeout(() => {
@@ -178,12 +181,14 @@ watch(searchInput, (value) => {
   }, 300)
 })
 
+// solo pueden crear gym los usuarios con rol GIMNASIO aprobado o el superuser
 const canCreateGym = computed(() => {
   if (!userStore.user) return false
   if (userStore.user.is_superuser) return true
   return userStore.user.rol === 'GIMNASIO' && userStore.user.estado_gym === 'APROBADO'
 })
 
+// abre o cierra el panel de notificaciones
 function toggleNotifPanel() {
   showNotifPanel.value = !showNotifPanel.value
 }
@@ -197,12 +202,14 @@ function goToCreateGym() {
   router.push('/gyms/create')
 }
 
+// navega al detalle del gym del usuario si tiene uno
 function goToMyGym() {
   if (myGym.value?.slug) {
     router.push(`/gyms/${myGym.value.slug}`)
   }
 }
 
+// al cambiar de provincia limpiamos el municipio y cargamos los nuevos
 async function onProvinceChange(payload) {
   filters.province_id = payload.province_id
   filters.municipality_id = ''
@@ -219,6 +226,7 @@ async function onMunicipalityChange(payload) {
   filters.municipality_id = payload.municipality_id
 }
 
+// aplica los filtros seleccionados y recarga los gyms
 async function onApplyFilters(newFilters) {
   filters.province_id = newFilters.province_id
   filters.municipality_id = newFilters.municipality_id
@@ -230,6 +238,7 @@ async function onApplyFilters(newFilters) {
 }
 
 onMounted(async () => {
+  // restauramos los filtros que tenía el store al volver a la home
   filters.province_id = currentFilters.value.province_id || ''
   filters.municipality_id = currentFilters.value.municipality_id || ''
 
@@ -239,6 +248,7 @@ onMounted(async () => {
     await gymsStore.fetchMunicipalities(filters.province_id)
   }
 
+  // solo cargamos myGym si el usuario puede gestionar gyms
   if (canCreateGym.value) {
     await gymsStore.fetchMyGym()
   }
@@ -248,6 +258,7 @@ onMounted(async () => {
     municipality_id: filters.municipality_id,
   })
 
+  // cargamos las notificaciones al entrar en la home
   await notificationsStore.fetch()
 })
 </script>

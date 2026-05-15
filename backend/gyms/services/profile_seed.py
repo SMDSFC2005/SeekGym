@@ -23,6 +23,28 @@ WEEKDAY_PATTERN = {
     23: 20,
 }
 
+# Viernes: mañana similar, tarde/noche bastante menos (gente sale)
+FRIDAY_PATTERN = {
+    6:  35,
+    7:  55,
+    8:  65,
+    9:  48,
+    10: 40,
+    11: 36,
+    12: 40,
+    13: 42,
+    14: 28,
+    15: 22,
+    16: 35,
+    17: 58,
+    18: 65,
+    19: 70,
+    20: 58,
+    21: 42,
+    22: 25,
+    23: 12,
+}
+
 SATURDAY_PATTERN = {
     9:  42,
     10: 58,
@@ -56,17 +78,39 @@ SUNDAY_PATTERN = {
 }
 
 DAY_PATTERNS = {
-    0: WEEKDAY_PATTERN,
-    1: WEEKDAY_PATTERN,
-    2: WEEKDAY_PATTERN,
-    3: WEEKDAY_PATTERN,
-    4: WEEKDAY_PATTERN,
+    0: WEEKDAY_PATTERN,  # Lunes
+    1: WEEKDAY_PATTERN,  # Martes
+    2: WEEKDAY_PATTERN,  # Miércoles
+    3: WEEKDAY_PATTERN,  # Jueves
+    4: FRIDAY_PATTERN,   # Viernes
     5: SATURDAY_PATTERN,
     6: SUNDAY_PATTERN,
 }
 
 
+# los gyms más caros suelen tener menos gente, esto lo refleja en los datos
+def _price_adjustment(price_per_month) -> int:
+    """Gimnasios más caros tienen menos afluencia."""
+    try:
+        price = float(price_per_month)
+    except (TypeError, ValueError):
+        return 0
+    if price < 20:
+        return 15
+    if price < 35:
+        return 5
+    if price < 55:
+        return 0
+    if price < 75:
+        return -15
+    if price < 100:
+        return -25
+    return -35
+
+
+# las horas punta tienen más confianza porque hay más datos históricos
 def _get_confidence(hour: int, day_of_week: int) -> int:
+    # fin de semana menos confianza, los patrones son más variables
     if day_of_week >= 5:
         return 60
     if 17 <= hour <= 21:
@@ -86,11 +130,15 @@ def seed_gym_occupancy_profiles(gym, gym_adjustment: int = 0, rng_seed: int = No
     if rng_seed is not None:
         random.seed(rng_seed)
 
+    # borramos los perfiles anteriores si los había para empezar desde cero
     GymOccupancyProfile.objects.filter(gym=gym).delete()
+
+    price_adj = _price_adjustment(gym.price_per_month)
 
     for day, pattern in DAY_PATTERNS.items():
         for hour, base_occupancy in pattern.items():
-            occupancy = base_occupancy + gym_adjustment + random.randint(-5, 5)
+            # añadimos un pelín de aleatoriedad para que no todos los gyms sean iguales
+            occupancy = base_occupancy + gym_adjustment + price_adj + random.randint(-5, 5)
             occupancy = max(5, min(95, occupancy))
             GymOccupancyProfile.objects.create(
                 gym=gym,

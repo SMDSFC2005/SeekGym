@@ -10,10 +10,13 @@ GOOD = "GOOD"
 MEDIUM = "MEDIUM"
 AVOID = "AVOID"
 
+# cuántas horas hacia adelante miramos para recomendar
 RECOMMENDATION_WINDOW_HOURS = 6
+# necesitamos al menos 2h antes del cierre para recomendar una franja
 MIN_TRAINING_HOURS = 2
 CLOSING_HOUR_BONUS = 25  # Reducción de ocupación (puntos) en la última hora antes del cierre
 
+# pesos para el scoring de la mejor hora: la ocupación manda más
 OCCUPANCY_WEIGHT = 0.70
 PROXIMITY_WEIGHT = 0.20
 CONFIDENCE_WEIGHT = 0.10
@@ -81,14 +84,17 @@ MONTHLY_OCCUPANCY_ADJUSTMENT = {
 _WEEKDAY_TO_DAY_TYPE = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]
 
 
+# comprueba si una fecha es festivo nacional en España
 def is_holiday(d: date_type) -> bool:
     return d in _SPAIN_HOLIDAYS
 
 
+# días especiales como Carnaval o Semana Santa que no son festivos oficiales
 def is_special_day(d: date_type) -> bool:
     return (d.year, d.month, d.day) in SPECIAL_DAYS
 
 
+# días con patrón partido: mañana lleno, tarde vacío (Nochebuena, Nochevieja...)
 def is_split_day(d: date_type) -> bool:
     return (d.year, d.month, d.day) in SPLIT_DAYS
 
@@ -111,10 +117,12 @@ def get_split_day_hour_adjustment(hour: int, d: date_type) -> int:
 # Núcleo de contexto
 # ---------------------------------------------------------------------------
 
+# devuelve la hora local del servidor (importante para España con cambio horario)
 def get_local_now(now=None):
     return timezone.localtime(now or timezone.now())
 
 
+# arma el contexto temporal completo: día efectivo, ajustes de ocupación, festivos...
 def get_context(now=None) -> dict:
     local_now = get_local_now(now)
     today = local_now.date()
@@ -129,6 +137,7 @@ def get_context(now=None) -> dict:
     # Días especiales normales y festivos usan patrones de domingo.
     effective_day = actual_weekday if split else (6 if (holiday or special) else actual_weekday)
 
+    # ajuste mensual base más correcciones por tipo de día especial
     adjustment = MONTHLY_OCCUPANCY_ADJUSTMENT.get(today.month, 0)
     if split:
         adjustment -= 10  # ajuste plano moderado; el reparto mañana/tarde lo gestiona get_split_day_hour_adjustment
@@ -149,6 +158,7 @@ def get_context(now=None) -> dict:
     }
 
 
+# atajo para pillar solo el día efectivo y la hora actual
 def get_day_and_hour(now=None):
     ctx = get_context(now)
     return ctx["effective_day"], ctx["hour"]
@@ -158,6 +168,7 @@ def get_day_and_hour(now=None):
 # Horario del gimnasio
 # ---------------------------------------------------------------------------
 
+# cacheamos el horario del gym para no hacer múltiples queries por request
 def _get_schedules_map(gym):
     if not hasattr(gym, "_cached_schedules"):
         gym._cached_schedules = {s.day_type: s for s in gym.schedules.all()}
@@ -173,6 +184,7 @@ def get_gym_schedule(gym, ctx):
     if not schedules:
         return None
 
+    # en festivos usamos HOL, y si no está configurado tiramos del domingo
     if ctx["is_holiday"] or ctx["is_special_day"]:
         return schedules.get("HOL") or schedules.get("SUN")
 
@@ -184,6 +196,7 @@ def get_gym_schedule(gym, ctx):
 # Ocupación
 # ---------------------------------------------------------------------------
 
+# convierte el porcentaje de ocupación en un estado legible: GOOD, MEDIUM o AVOID
 def get_status_from_occupancy(occupancy_percent):
     if occupancy_percent is None:
         return None
@@ -194,6 +207,7 @@ def get_status_from_occupancy(occupancy_percent):
     return AVOID
 
 
+# aplica el ajuste y lo mantiene entre 0 y 100 siempre
 def _apply_adjustment(occupancy_percent, adjustment):
     return max(0, min(100, occupancy_percent + adjustment))
 
@@ -205,6 +219,7 @@ def _closing_proximity_adjustment(hour, closing_hour):
     return -CLOSING_HOUR_BONUS if (closing_hour - hour) <= 1 else 0
 
 
+# pillamos el perfil de ocupación de la hora actual para ese gym
 def get_current_profile_for_gym(gym, now=None):
     ctx = get_context(now)
     return GymOccupancyProfile.objects.filter(
@@ -215,11 +230,13 @@ def get_current_profile_for_gym(gym, now=None):
     ).first()
 
 
+# devuelve la ocupación actual del gym con todos los ajustes aplicados
 def get_current_occupancy_data(gym, now=None):
     ctx = get_context(now)
 
     schedule = get_gym_schedule(gym, ctx)
     if schedule:
+        # si está cerrado o fuera de horario, no hay dato de ocupación
         if schedule.is_closed:
             return {"current_occupancy": None, "current_status": None, "confidence": None}
         if ctx["hour"] < schedule.opening_hour or ctx["hour"] >= schedule.closing_hour:
@@ -230,6 +247,7 @@ def get_current_occupancy_data(gym, now=None):
         return {"current_occupancy": None, "current_status": None, "confidence": None}
 
     closing = schedule.closing_hour if schedule else None
+    # sumamos todos los ajustes: mensual + proximidad cierre + día especial
     total_adj = (
         ctx["occupancy_adjustment"]
         + _closing_proximity_adjustment(ctx["hour"], closing)
@@ -247,8 +265,10 @@ def get_current_occupancy_data(gym, now=None):
 # Scoring
 # ---------------------------------------------------------------------------
 
+# calcula la puntuación de una franja horaria para ver cuál es la mejor
 def calculate_score(profile, current_hour, occupancy_adjustment=0, closing_hour=None, date=None):
     hours_ahead = profile.hour - current_hour
+    # si la franja ya pasó no la puntuamos
     if hours_ahead <= 0:
         return None
 
@@ -258,6 +278,7 @@ def calculate_score(profile, current_hour, occupancy_adjustment=0, closing_hour=
         + (get_split_day_hour_adjustment(profile.hour, date) if date else 0)
     )
     adjusted_occupancy = _apply_adjustment(profile.occupancy_percent, total_adj)
+    # menos ocupación = mejor puntuación de ocupación
     occupancy_score = 1 - (adjusted_occupancy / 100)
     proximity_score = 1 / hours_ahead
     confidence_score = profile.confidence / 100
@@ -270,6 +291,7 @@ def calculate_score(profile, current_hour, occupancy_adjustment=0, closing_hour=
     )
 
 
+# arma el texto de explicación de por qué se recomienda esa hora
 def build_recommendation_reason(profile, current_hour, latest_recommendable_hour, ctx=None):
     hours_ahead = profile.hour - current_hour
 
@@ -297,6 +319,7 @@ def build_recommendation_reason(profile, current_hour, latest_recommendable_hour
         f"(última hora recomendable: {latest_recommendable_hour:02d}:00)."
     )
 
+    # si es un día especial añadimos contexto al mensaje
     if ctx:
         if ctx.get("is_special_day"):
             name = ctx.get("special_day_name", "Día especial")
@@ -311,6 +334,7 @@ def build_recommendation_reason(profile, current_hour, latest_recommendable_hour
 # API principal
 # ---------------------------------------------------------------------------
 
+# calcula la mejor hora para ir al gym hoy a partir de ahora mismo
 def get_best_time_today(gym, now=None):
     ctx = get_context(now)
     current_hour = ctx["hour"]
@@ -334,11 +358,12 @@ def get_best_time_today(gym, now=None):
     if not all_profiles:
         return None
 
-    # Filtrar horas dentro del horario del gimnasio
+    # solo las horas dentro del horario del gym
     valid_profiles = [p for p in all_profiles if opening <= p.hour < closing]
     if not valid_profiles:
         return None
 
+    # no recomendamos las últimas horas si no da tiempo a entrenar bien
     latest_recommendable = closing - MIN_TRAINING_HOURS
 
     future_profiles = [
@@ -349,6 +374,7 @@ def get_best_time_today(gym, now=None):
     if not future_profiles:
         return None
 
+    # preferimos recomendar dentro de la ventana próxima, pero si no hay, miramos más lejos
     window_profiles = [
         p for p in future_profiles
         if p.hour <= current_hour + RECOMMENDATION_WINDOW_HOURS
@@ -365,6 +391,7 @@ def get_best_time_today(gym, now=None):
     if not scored_profiles:
         return None
 
+    # prioridad: primero GOOD, luego MEDIUM, nunca AVOID
     def _status_priority(occupancy_percent, hour):
         total_adj = (
             ctx["occupancy_adjustment"]
@@ -395,6 +422,7 @@ def get_best_time_today(gym, now=None):
         + get_split_day_hour_adjustment(best_profile.hour, ctx["date"])
     )
     adjusted_best = _apply_adjustment(best_profile.occupancy_percent, total_adj_best)
+    # si la mejor opción disponible está muy llena, mejor no recomendar nada
     if adjusted_best >= 70:
         return None
 
@@ -416,10 +444,12 @@ def get_best_time_today(gym, now=None):
 # Mejor hora mañana
 # ---------------------------------------------------------------------------
 
+# igual que get_best_time_today pero calculado para mañana desde medianoche
 def get_best_time_tomorrow(gym, now=None):
     local_now = get_local_now(now)
     tomorrow = local_now.date() + timedelta(days=1)
 
+    # usamos medianoche de mañana como referencia temporal
     tomorrow_midnight = timezone.make_aware(
         datetime_type.combine(tomorrow, datetime_type.min.time())
     )
@@ -536,6 +566,7 @@ def build_timeline_hour(hour, profile=None, occupancy_adjustment=0, closing_hour
     }
 
 
+# construye el timeline completo de las 24h para hoy
 def get_today_timeline(gym, now=None):
     ctx = get_context(now)
 
@@ -550,10 +581,12 @@ def get_today_timeline(gym, now=None):
         zone=GymOccupancyProfile.Zone.GENERAL,
     ).order_by("hour")
 
+    # indexamos por hora para acceder rápido
     profiles_by_hour = {p.hour: p for p in profiles}
 
     result = []
     for hour in range(24):
+        # las horas fuera del horario van vacías (sin dato de ocupación)
         if is_closed_today or hour < opening or hour >= closing:
             result.append(build_timeline_hour(hour))
         else:

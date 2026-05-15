@@ -1,5 +1,6 @@
 import apiCore from '@/services/apiCore'
 
+// pide los gyms de la home con los filtros que vengan, solo añade los que tengan valor
 export async function getHomeGymsService(filters = {}) {
   const params = {}
 
@@ -22,6 +23,7 @@ export async function getHomeGymsService(filters = {}) {
   }
 }
 
+// pide el detalle completo de un gym por su slug
 export async function getGymDetailService(slug) {
   try {
     return await apiCore.get(`/gyms/${slug}/`)
@@ -30,6 +32,7 @@ export async function getGymDetailService(slug) {
   }
 }
 
+// pide el gym del usuario logueado
 export async function getMyGymService() {
   try {
     return await apiCore.get('/gyms/my-gym/')
@@ -38,6 +41,7 @@ export async function getMyGymService() {
   }
 }
 
+// crea un gym nuevo con los datos del formulario
 export async function createGymService(payload) {
   try {
     return await apiCore.post('/gyms/create/', payload)
@@ -46,6 +50,7 @@ export async function createGymService(payload) {
   }
 }
 
+// actualiza parcialmente un gym existente (PATCH para mandar solo lo que cambia)
 export async function updateGymService(slug, payload) {
   try {
     return await apiCore.patch(`/gyms/${slug}/manage/`, payload)
@@ -54,6 +59,7 @@ export async function updateGymService(slug, payload) {
   }
 }
 
+// borra un gym permanentemente
 export async function deleteGymService(slug) {
   try {
     return await apiCore.delete(`/gyms/${slug}/manage/`)
@@ -62,6 +68,7 @@ export async function deleteGymService(slug) {
   }
 }
 
+// publica un anuncio en el gym indicado
 export async function createGymAnnouncementService(slug, payload) {
   try {
     return await apiCore.post(`/gyms/${slug}/announcements/`, payload)
@@ -70,6 +77,7 @@ export async function createGymAnnouncementService(slug, payload) {
   }
 }
 
+// lista de provincias para los filtros del buscador
 export async function getProvincesService() {
   try {
     return await apiCore.get('/gyms/filters/provinces/')
@@ -78,6 +86,7 @@ export async function getProvincesService() {
   }
 }
 
+// municipios de una provincia concreta
 export async function getMunicipalitiesService(provinceId) {
   try {
     return await apiCore.get('/gyms/filters/municipalities/', {
@@ -88,6 +97,7 @@ export async function getMunicipalitiesService(provinceId) {
   }
 }
 
+// códigos postales disponibles según los filtros de provincia/municipio
 export async function getPostalCodesService(filters = {}) {
   const params = {}
 
@@ -106,6 +116,7 @@ export async function getPostalCodesService(filters = {}) {
   }
 }
 
+// gyms que sigue el usuario logueado
 export async function getFollowedGymsService() {
   try {
     return await apiCore.get('/gyms/seguidos/')
@@ -114,6 +125,7 @@ export async function getFollowedGymsService() {
   }
 }
 
+// toggle seguir/dejar de seguir un gym
 export async function toggleFollowGymService(slug) {
   try {
     return await apiCore.post(`/gyms/${slug}/follow/`)
@@ -122,6 +134,7 @@ export async function toggleFollowGymService(slug) {
   }
 }
 
+// pilla las notificaciones pendientes del usuario
 export async function getNotificationsService() {
   try {
     return await apiCore.get('/gyms/notifications/')
@@ -130,9 +143,21 @@ export async function getNotificationsService() {
   }
 }
 
+// marca todas las notificaciones como leídas
 export async function markNotificationsReadService() {
   try {
     return await apiCore.post('/gyms/notifications/')
+  } catch (error) {
+    return error.response
+  }
+}
+
+// sube la imagen de portada del gym como FormData
+export async function uploadGymImageService(slug, file) {
+  const formData = new FormData()
+  formData.append('image', file)
+  try {
+    return await apiCore.post(`/gyms/${slug}/upload-image/`, formData)
   } catch (error) {
     return error.response
   }

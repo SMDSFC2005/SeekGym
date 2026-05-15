@@ -39,10 +39,12 @@ export const useGymsStore = defineStore('gyms', {
   }),
 
   actions: {
+    // carga los gyms con los filtros activos, combinando los nuevos con los guardados
     async fetchHomeGyms(filters = {}) {
       this.loading = true
       this.error = ''
 
+      // mezclamos los filtros nuevos con los que ya tenía el store
       const finalFilters = {
         province_id: filters.province_id ?? this.currentFilters.province_id,
         municipality_id: filters.municipality_id ?? this.currentFilters.municipality_id,
@@ -64,6 +66,7 @@ export const useGymsStore = defineStore('gyms', {
       return { isOk: false, data: response?.data || null }
     },
 
+    // carga el detalle completo de un gym por su slug
     async fetchGymDetail(slug) {
       this.detailLoading = true
       this.detailError = ''
@@ -81,6 +84,7 @@ export const useGymsStore = defineStore('gyms', {
       return { isOk: false, data: response?.data || null }
     },
 
+    // pilla el gym del usuario logueado si tiene uno
     async fetchMyGym() {
       this.myGymLoading = true
       this.myGymError = ''
@@ -98,6 +102,7 @@ export const useGymsStore = defineStore('gyms', {
       return { isOk: false, data: response?.data || null }
     },
 
+    // crea un gym nuevo y lo guarda en myGym
     async createGym(payload) {
       this.saveLoading = true
       this.saveError = ''
@@ -114,6 +119,7 @@ export const useGymsStore = defineStore('gyms', {
       return { isOk: false, data: response?.data || null }
     },
 
+    // actualiza el gym y sincroniza gymDetail y myGym si corresponde
     async updateGym(slug, payload) {
       this.saveLoading = true
       this.saveError = ''
@@ -124,6 +130,7 @@ export const useGymsStore = defineStore('gyms', {
       if (response?.status === 200) {
         this.gymDetail = response.data
 
+        // si el gym editado es el nuestro, actualizamos myGym también
         if (this.myGym && this.myGym.slug === slug) {
           this.myGym = response.data
         }
@@ -135,6 +142,7 @@ export const useGymsStore = defineStore('gyms', {
       return { isOk: false, data: response?.data || null }
     },
 
+    // publica un anuncio y recarga el detalle del gym para que se vea al momento
     async createAnnouncement(slug, payload) {
       this.announcementLoading = true
       this.announcementError = ''
@@ -155,6 +163,7 @@ export const useGymsStore = defineStore('gyms', {
       return { isOk: false, data: response?.data || null }
     },
 
+    // carga la lista de provincias para los filtros
     async fetchProvinces() {
       const response = await getProvincesService()
 
@@ -167,6 +176,7 @@ export const useGymsStore = defineStore('gyms', {
       return { isOk: false, data: response?.data || null }
     },
 
+    // carga los municipios de una provincia, si no hay ID limpiamos la lista
     async fetchMunicipalities(provinceId) {
       if (!provinceId) {
         this.municipalities = []
@@ -184,6 +194,7 @@ export const useGymsStore = defineStore('gyms', {
       return { isOk: false, data: response?.data || null }
     },
 
+    // limpia los municipios, útil al cambiar de provincia
     resetMunicipalities() {
       this.municipalities = []
     },
