@@ -12,7 +12,6 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 
 import os
 from pathlib import Path
-import dj_database_url
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -29,7 +28,6 @@ if _env_path.exists():
 SECRET_KEY = os.environ.get('SECRET_KEY')
 DEBUG = os.environ.get('DEBUG', 'False') == 'True'
 ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
-ALLOWED_HOSTS += ['*']  # Vercel puede usar hosts internos distintos al dominio público
 
 
 # Application definition
@@ -82,13 +80,12 @@ WSGI_APPLICATION = 'config.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
-_db_url = os.environ.get('DATABASE_URL', '').strip()
-if not _db_url or not _db_url.startswith(('postgres://', 'postgresql://')):
-    # Session Pooler de Supabase (IPv4, compatible con Vercel serverless)
-    _db_url = 'postgresql://postgres.msurzkmdvtyckhcfstlh:Antoniopuerta14162790@aws-1-eu-central-2.pooler.supabase.com:5432/postgres'
-_db_config = dj_database_url.parse(_db_url, conn_max_age=0)
-_db_config.setdefault('OPTIONS', {})['sslmode'] = 'require'
-DATABASES = {'default': _db_config}
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': BASE_DIR / 'db.sqlite3',
+    }
+}
 
 
 # Password validation
@@ -130,8 +127,10 @@ STATIC_URL = 'static/'
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
-_cors_env = os.environ.get('CORS_ALLOWED_ORIGINS', 'http://localhost:5173,http://127.0.0.1:5173')
-CORS_ALLOWED_ORIGINS = [o.strip() for o in _cors_env.split(',') if o.strip()]
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+]
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
