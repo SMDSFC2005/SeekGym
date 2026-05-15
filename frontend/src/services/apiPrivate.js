@@ -2,7 +2,7 @@ import axios from 'axios'
 
 // cliente axios para los endpoints de autenticación (/api/auth/...)
 const apiPrivate = axios.create({
-  baseURL: 'http://127.0.0.1:8000/api/auth',
+  baseURL: import.meta.env.VITE_API_AUTH_URL || 'http://127.0.0.1:8000/api/auth',
   headers: {
     'Content-Type': 'application/json',
   },
