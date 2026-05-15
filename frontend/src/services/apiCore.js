@@ -1,8 +1,14 @@
 import axios from 'axios'
 
+// en local apunta al Django local, en producción al backend de Vercel
+const isLocal = typeof window !== 'undefined' &&
+  (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+const _apiBase = import.meta.env.VITE_API_URL ||
+  (isLocal ? 'http://127.0.0.1:8000/api' : `${window.location.origin}/_/backend/api`)
+
 // cliente axios principal para la API general del backend
 const apiCore = axios.create({
-  baseURL: 'http://127.0.0.1:8000/api',
+  baseURL: _apiBase,
   headers: {
     'Content-Type': 'application/json',
   },
