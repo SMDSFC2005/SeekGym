@@ -3,5 +3,5 @@ builder = "DOCKERFILE"
 dockerfilePath = "Dockerfile"
 
 [deploy]
-healthcheckPath = "/api/gyms/"
+healthcheckPath = "/"
 healthcheckTimeout = 60
