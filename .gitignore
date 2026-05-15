@@ -3,8 +3,6 @@
 # =====================
 backend/entorno/
 backend/__pycache__/
-backend/*.sqlite3
-backend/db.sqlite3
 
 # =====================
 # Python
@@ -22,5 +20,3 @@ __pycache__/
 # =====================
 .DS_Store
 Thumbs.db
-.vercel
-.env*.local

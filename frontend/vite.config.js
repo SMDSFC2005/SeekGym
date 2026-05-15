@@ -15,4 +15,10 @@ export default defineConfig({
       '@': fileURLToPath(new URL('./src', import.meta.url))
     },
   },
+  server: {
+    // en local redirige /api al Django corriendo en 8000
+    proxy: {
+      '/api': 'http://127.0.0.1:8000',
+    },
+  },
 })
